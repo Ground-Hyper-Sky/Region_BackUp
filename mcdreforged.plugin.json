@@ -1,0 +1,20 @@
+{
+	"id": "region_backup",
+	"version": "1.0.0",
+	"name": "Region-BackUp",
+	"description": {
+		"en_us": "An MCDR plugin that backs up or backs up files on a regional basis",
+		"zh_cn": "一个以区域为单位备份或回档的MCDR插件"
+	},
+	"author": [
+		"GHS-Official"
+	],
+	"link": "https://github.com/GHS-Official/Region-BackUp",
+	"dependencies": {
+		"mcdreforged": ">=2.6.0"
+	},
+	"archive_name": "Region_BackUp-v{version}",
+	"resources": [
+		"LICENSE"
+	]
+}
