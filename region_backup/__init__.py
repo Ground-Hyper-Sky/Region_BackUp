@@ -27,7 +27,6 @@ class RestartPlugin:
         if not self.server.get_instance().restart():
             self.server.say('Failed to restart the server. The server may already be stopped.')
             return
-            
         self.server.say('Server is restarting. Please reconnect later.')
 
 def on_load(server: PluginServerInterface, old):
