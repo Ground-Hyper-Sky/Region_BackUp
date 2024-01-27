@@ -26,8 +26,9 @@ class RestartPlugin:
         # 直接调用 MCDR 提供的 restart 方法进行服务器重启
         if not self.server.get_instance().restart():
             self.server.say('Failed to restart the server. The server may already be stopped.')
-        else:
-            self.server.say('Server is restarting. Please reconnect later.')
+            return
+            
+        self.server.say('Server is restarting. Please reconnect later.')
 
 def on_load(server: PluginServerInterface, old):
     return RestartPlugin(server, old)
