@@ -50,6 +50,7 @@ def rb_list():
 def rb_reload():
     pass
 
+#on_load
 def on_load(server: PluginServerInterface, old):
     server.register_help_message('!!rb', '查看与区域备份有关的指令')
 
