@@ -60,7 +60,7 @@ help_msg = '''
 def print_help_msg():
     pass
 
-def rb_make():
+def rb_make(source: CommandSource, dic: dict):
     pass
 
 def rb_position_make():
@@ -84,14 +84,13 @@ def rb_list():
 def rb_reload():
     pass
 
-#on_load
 def on_load(server: PluginServerInterface, old):
     server.register_help_message('!!rb', '查看与区域备份有关的指令')
 
     builder = SimpleCommandBuilder()
 
     builder.command("!!rb",print_help_msg)
-    builder.command("!!rb make <r> <des>",rb_make)
+    builder.command("!!rb make <r_des>",rb_make)
     builder.command("!!rb pos_make <x1> <z1> <x2> <z2> <dim> <des>",rb_position_make)
     builder.command("!!rb back <slot>",rb_back)
     builder.command("!!rb confirm",rb_confirm)
@@ -99,3 +98,13 @@ def on_load(server: PluginServerInterface, old):
     builder.command("!!rb abort",rb_abort)
     builder.command("!!rb list",rb_list)
     builder.command("!!rb reload",rb_reload)
+
+    builder.arg("r_des",GreedyText)
+    builder.arg("x1",Number)
+    builder.arg("z1",Number)
+    builder.arg("x2",Number)
+    builder.arg("z2",Number)
+    builder.arg("dim",Integer)
+    builder.arg("slot",Integer)
+
+    builder.register(server)
