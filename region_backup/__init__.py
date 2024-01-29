@@ -72,8 +72,15 @@ def rb_back():
 def rb_confirm():
     pass
 
-def rb_del():
-    pass
+def rb_del(source: CommandSource, dic: dict):
+    #获取文件夹地址
+    slot = backup_path.format(dic['slot'])
+    #判断槽位是否存在
+    if not os.path.exists(slot):
+        source.reply(f"§4§l槽位{dic['slot']}不存在")
+    else:
+        #删除整个文件夹
+        os.remove("slot")
 
 def rb_abort():
     pass
