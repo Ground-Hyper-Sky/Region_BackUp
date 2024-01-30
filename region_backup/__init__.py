@@ -33,6 +33,7 @@
 #               不见满街漂亮妹，哪个归得程序员？
 #
 import time
+import os
 
 from mcdreforged.api.all import *
 
@@ -41,6 +42,8 @@ from region_backup.json_message import Message
 Prefix = '!!rb'
 data_list = []
 user = None
+game_save = None
+server_path = "./server/world"
 
 help_msg = '''
 ------ {1} {2} ------
@@ -65,6 +68,7 @@ def print_help_msg(source: CommandSource):
 
 @new_thread("rb_make")
 def rb_make(source: InfoCommandSource, dic: dict):
+    global game_save
     text = dic["r_des"]
     lst = text.split()
 
@@ -88,17 +92,24 @@ def rb_make(source: InfoCommandSource, dic: dict):
     get_user_info(source)
     while len(data_list) < 4:
         time.sleep(0.01)
-    backup_pos = get_backup_pos(r, data_list[2][0] // 512, data_list[2][2] // 512)
+    backup_pos = get_backup_pos(r, int(data_list[2][0] // 512), int(data_list[2][2] // 512))
+    print(backup_pos)
+    data = data_list.copy()
     data_list.clear()
-    
-    #保存游戏
+
+    # 保存游戏
     source.get_server().execute("/save-all")
+    while game_save:
+        time.sleep(0.01)
+    game_save = None
+
+    source.get_server().execute("/save-off")
 
 
 # 玩家信息类型有如下两种 坐标，即Pos 维度，即Dimension
 @new_thread("user_info")
 def get_user_info(source):
-    global user,data_list
+    global user, data_list
     user = source.get_info().player
 
     if user:
@@ -112,6 +123,7 @@ def get_user_info(source):
         data_list.append([float(pos.strip('d')) for pos in data_list[0].strip("[]").split(',')])
         data_list.append(data_list[1].strip('"minecraft:"'))
         user = None
+
 
 def rb_position_make():
     pass
@@ -160,16 +172,40 @@ def get_backup_pos(r, x, z):
     return backup_pos
 
 
+def search_vaild_pos(data, backup_pos):
+    dim_dict = {"the_nether": "DIM-1", "the_end": "DIM1"}
+    vaild_pos={"region":[],"poi":[],"entities":[]}
+
+    if data[-1] in dim_dict:
+        path = os.path.join(server_path,dim_dict[data[-1]])
+
+    else:
+        path = server_path
+
+    for folder in vaild_pos:
+        for pos in backup_pos:
+            x,z=pos
+            file = os.path.join(path + f"/{folder}", f"r.{x}.{z}.mca")
+
+            if os.path.isfile(file):
+                vaild_pos[folder].append(pos)
+
+
 def get_pos(info: Info, player):
     pass
 
 
 def on_info(server: PluginServerInterface, info: Info):
+    global game_save
     if not user:
         return
 
-    if info.content.startswith(f"{user} has the following entity data:"):
+    if info.content.startswith(f"{user} has the following entity data:") and info.is_from_server:
         data_list.append(info.content.split(sep="entity data: ")[-1])
+        return
+
+    if info.content.startswith("Saved the game") and info.is_from_server:
+        game_save = True
 
 
 def on_load(server: PluginServerInterface, old):
