@@ -42,6 +42,7 @@ import codecs
 from mcdreforged.api.all import *
 
 from region_backup.json_message import Message
+from region_backup.edit_json import Edit_Read as edit
 
 Prefix = '!!rb'
 dim_dict = {"the_nether": "DIM-1", "the_end": "DIM1"}
@@ -108,6 +109,7 @@ def rb_make(source: InfoCommandSource, dic: dict):
         source.get_server().execute("save-all")
         while backup_state == 1:
             time.sleep(0.01)
+        backup_state = None
 
         source.get_server().execute("save-off")
         while backup_state == 2:
@@ -197,6 +199,9 @@ def check_folder(folder_path=None):
 
     for i in range(1, slot + 1):
         os.makedirs(os.path.join(rb_multi, f"slot{i}"), exist_ok=True)
+
+def make_info_file():
+    pass
 
 def rename_slot():
     shutil.rmtree(os.path.join(rb_multi, f"slot{slot}"))
