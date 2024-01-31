@@ -107,7 +107,6 @@ def rb_make(source: InfoCommandSource, dic: dict):
         source.get_server().execute("save-all")
         while backup_state == 1:
             time.sleep(0.01)
-        backup_state = None
 
         source.get_server().execute("save-off")
         while backup_state == 2:
@@ -197,8 +196,6 @@ def check_folder(folder_path=None):
 
     for i in range(1, slot + 1):
         os.makedirs(os.path.join(rb_multi, f"slot{i}"), exist_ok=True)
-
-def make_info_file():
 
 def rename_slot():
     shutil.rmtree(os.path.join(rb_multi, f"slot{slot}"))
