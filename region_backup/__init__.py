@@ -37,12 +37,15 @@ import time
 import os
 import zipfile
 import shutil
+import datetime
 import codecs
+import json
 
 from mcdreforged.api.all import *
 
 from region_backup.json_message import Message
 from region_backup.edit_json import Edit_Read as edit
+from region_backup.config import rb_info
 
 Prefix = '!!rb'
 dim_dict = {"the_nether": "DIM-1", "the_end": "DIM1"}
@@ -104,6 +107,8 @@ def rb_make(source: InfoCommandSource, dic: dict):
         backup_pos = get_backup_pos(r, int(data_list[2][0] // 512), int(data_list[2][2] // 512))
         data = data_list.copy()
         data_list.clear()
+        data[0] = source.get_info().player
+        data[1] = source.get_info().content
 
         # 保存游戏
         source.get_server().execute("save-all")
@@ -120,10 +125,13 @@ def rb_make(source: InfoCommandSource, dic: dict):
 
         rename_slot()
 
+        make_info_file(data)
+
         compress_files(valid_pos, data)
 
         source.get_server().execute("save-on")
         backup_state = None
+
 
 # 玩家信息类型有如下两种 坐标，即Pos 维度，即Dimension
 @new_thread("user_info")
@@ -200,8 +208,22 @@ def check_folder(folder_path=None):
     for i in range(1, slot + 1):
         os.makedirs(os.path.join(rb_multi, f"slot{i}"), exist_ok=True)
 
-def make_info_file():
-    pass
+
+def make_info_file(data):
+    file_path = os.path.join(rb_multi, "slot1", "info.json")
+
+    info = rb_info.get_default().serialize()
+    info["time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    info["backup_dimension"] = data[-1]
+    info["user_dimension"] = data[-1]
+    info["user"] = data[0]
+    info["user_pos"] = ",".join(str(pos) for pos in data[2])
+    info["command"] = data[1]
+    info["comment"] = data[1].split(maxsplit=3)[-1]
+
+    with codecs.open(file_path, "w", encoding="utf-8-sig") as fp:
+        json.dump(info, fp, ensure_ascii=False, indent=4)
+
 
 def rename_slot():
     shutil.rmtree(os.path.join(rb_multi, f"slot{slot}"))
