@@ -34,16 +34,22 @@
 #
 import time
 import os
+import zipfile
+import shutil
+import codecs
 
 from mcdreforged.api.all import *
 
 from region_backup.json_message import Message
 
 Prefix = '!!rb'
+dim_dict = {"the_nether": "DIM-1", "the_end": "DIM1"}
 data_list = []
 user = None
-game_save = None
+backup_state = None
 server_path = "./server/world"
+rb_multi = "./rb_multi"
+slot = 5
 
 help_msg = '''
 ------ {1} {2} ------
@@ -68,43 +74,54 @@ def print_help_msg(source: CommandSource):
 
 @new_thread("rb_make")
 def rb_make(source: InfoCommandSource, dic: dict):
-    global game_save
-    text = dic["r_des"]
-    lst = text.split()
+    global backup_state
+    if backup_state is None:
+        text = dic["r_des"]
+        lst = text.split()
 
-    if len(lst) == 1:
-        try:
-            r = int(lst[0])
-            des = "空"
+        if len(lst) == 1:
+            try:
+                r = int(lst[0])
+                des = "空"
 
-        except ValueError:
-            source.reply("输入错误")
-            return
-    else:
-        try:
-            r = int(lst[0])
-            des = text.split(maxsplit=1)[1]
+            except ValueError:
+                source.reply("输入错误")
+                return
+        else:
+            try:
+                r = int(lst[0])
+                des = text.split(maxsplit=1)[1]
 
-        except ValueError:
-            source.reply("输入错误")
-            return
+            except ValueError:
+                source.reply("输入错误")
+                return
 
-    get_user_info(source)
-    while len(data_list) < 4:
-        time.sleep(0.01)
-    backup_pos = get_backup_pos(r, int(data_list[2][0] // 512), int(data_list[2][2] // 512))
-    print(backup_pos)
-    data = data_list.copy()
-    data_list.clear()
+        get_user_info(source)
+        while len(data_list) < 4:
+            time.sleep(0.01)
+        backup_pos = get_backup_pos(r, int(data_list[2][0] // 512), int(data_list[2][2] // 512))
+        data = data_list.copy()
+        data_list.clear()
 
-    # 保存游戏
-    source.get_server().execute("/save-all")
-    while game_save:
-        time.sleep(0.01)
-    game_save = None
+        # 保存游戏
+        source.get_server().execute("save-all")
+        while backup_state == 1:
+            time.sleep(0.01)
+        backup_state = None
 
-    source.get_server().execute("/save-off")
+        source.get_server().execute("save-off")
+        while backup_state == 2:
+            time.sleep(0.01)
 
+        valid_pos = search_valid_pos(data, backup_pos)
+        check_folder()
+
+        rename_slot()
+
+        compress_files(valid_pos, data)
+
+        source.get_server().execute("save-on")
+        backup_state = None
 
 # 玩家信息类型有如下两种 坐标，即Pos 维度，即Dimension
 @new_thread("user_info")
@@ -172,23 +189,65 @@ def get_backup_pos(r, x, z):
     return backup_pos
 
 
-def search_vaild_pos(data, backup_pos):
-    dim_dict = {"the_nether": "DIM-1", "the_end": "DIM1"}
-    vaild_pos={"region":[],"poi":[],"entities":[]}
+def check_folder(folder_path=None):
+    if folder_path and not os.path.exists(folder_path):
+        os.makedirs(folder_path)
 
+    os.makedirs(rb_multi, exist_ok=True)
+
+    for i in range(1, slot + 1):
+        os.makedirs(os.path.join(rb_multi, f"slot{i}"), exist_ok=True)
+
+def make_info_file():
+
+def rename_slot():
+    shutil.rmtree(os.path.join(rb_multi, f"slot{slot}"))
+    if slot > 1:
+        for i in range(slot - 1, 0, -1):
+            os.rename(os.path.join(rb_multi, f"slot{i}"), os.path.join(rb_multi, f"slot{i + 1}"))
+
+    os.makedirs(os.path.join(rb_multi, "slot1"))
+
+
+def compress_files(valid_pos, data):
     if data[-1] in dim_dict:
-        path = os.path.join(server_path,dim_dict[data[-1]])
+        path = os.path.join(server_path, dim_dict[data[-1]])
 
     else:
         path = server_path
 
-    for folder in vaild_pos:
+    for folder, positions in valid_pos.items():
+        # 获取坐标的横纵坐标值
+        if not positions:
+            continue
+
+        with zipfile.ZipFile(os.path.join(rb_multi, "slot1", f"{folder}.zip"), 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for pos in positions:
+                x, z = pos
+
+                file_path = os.path.join(path, folder, f"r.{x}.{z}.mca")
+
+                zipf.write(file_path, arcname=f"r.{x}.{z}.mca")
+
+
+def search_valid_pos(data, backup_pos):
+    valid_pos = {"region": [], "poi": [], "entities": []}
+
+    if data[-1] in dim_dict:
+        path = os.path.join(server_path, dim_dict[data[-1]])
+
+    else:
+        path = server_path
+
+    for folder, positions in valid_pos.items():
         for pos in backup_pos:
-            x,z=pos
-            file = os.path.join(path + f"/{folder}", f"r.{x}.{z}.mca")
+            x, z = pos
+            file = os.path.join(path, folder, f"r.{x}.{z}.mca")
 
             if os.path.isfile(file):
-                vaild_pos[folder].append(pos)
+                positions.append(pos)
+
+    return valid_pos
 
 
 def get_pos(info: Info, player):
@@ -196,7 +255,7 @@ def get_pos(info: Info, player):
 
 
 def on_info(server: PluginServerInterface, info: Info):
-    global game_save
+    global backup_state
     if not user:
         return
 
@@ -205,7 +264,10 @@ def on_info(server: PluginServerInterface, info: Info):
         return
 
     if info.content.startswith("Saved the game") and info.is_from_server:
-        game_save = True
+        backup_state = 1
+
+    if info.content.startswith("Automatic saving is now disabled") and info.is_from_server:
+        backup_state = 2
 
 
 def on_load(server: PluginServerInterface, old):
@@ -233,3 +295,4 @@ def on_load(server: PluginServerInterface, old):
 
     builder.register(server)
 
+    check_folder()
