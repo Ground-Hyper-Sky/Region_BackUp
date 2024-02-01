@@ -40,7 +40,6 @@ import codecs
 import json
 
 from mcdreforged.api.all import *
-from zipfile import ZipFile
 from region_backup.json_message import Message
 from region_backup.edit_json import Edit_Read as edit
 from region_backup.config import rb_info
@@ -123,7 +122,7 @@ def rb_make(source: InfoCommandSource, dic: dict):
             time.sleep(0.01)
         backup_state = None
 
-        source.get_server().execute("save-all")
+        source.get_server().execute("save-all flush")
         while backup_state == 2:
             time.sleep(0.01)
 
@@ -200,7 +199,7 @@ def rb_back(source: CommandSource, dic: dict):
 '''
 
 
-def on_server_stop(server: PluginServerInterface):
+def on_server_stop(server: PluginServerInterface, server_return_code: int):
     global back_slot
     extra_slot = f"{backup_home}/overwrite"
     if back_slot:
@@ -226,9 +225,10 @@ def on_server_stop(server: PluginServerInterface):
         for backup_file in ["entities", "region", "poi"]:
             lst = os.listdir(os.path.join(backup_path.format(back_slot), backup_file))
             for i in lst:
-                shutil.copy2(os.path.join(path, backup_file, i), os.path.join(extra_slot,backup_file))
-
-            shutil.copytree(os.path.join(backup_path.format(back_slot), backup_file), os.path.join(path, backup_file),dirs_exist_ok=True)
+                shutil.copy2(os.path.join(path, backup_file, i), os.path.join(extra_slot, backup_file, i))
+                #os.remove(os.path.join(path, backup_file, i))
+                shutil.copy2(os.path.join(backup_path.format(back_slot), backup_file, i),
+                             os.path.join(path, backup_file, i))
 
         back_slot = None
 
@@ -251,10 +251,9 @@ def rb_del(source: CommandSource, dic: dict):
 
 @new_thread("rb_abort")
 def rb_abort():
-    global back_state, operate_source
+    global back_state
     # 当前操作备份信息
     # 是否来自本插件调用
-    operate_source = False
     back_state = True
 
 
@@ -360,6 +359,8 @@ def copy_files(valid_pos, data):
     else:
         path = world_path
 
+    time.sleep(0.1)
+
     for folder, positions in valid_pos.items():
         # 获取坐标的横纵坐标值
         if not positions:
@@ -369,7 +370,7 @@ def copy_files(valid_pos, data):
         for pos in positions:
             x, z = pos
             file_path = os.path.join(path, folder, f"r.{x}.{z}.mca")
-            shutil.copy2(file_path, os.path.join(backup_path.format(1), f"{folder}"))
+            shutil.copy2(file_path, os.path.join(backup_path.format(1), folder, f"r.{x}.{z}.mca"))
 
 
 def search_valid_pos(data, backup_pos):
