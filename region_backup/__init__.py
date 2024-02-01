@@ -33,8 +33,8 @@
 #               不见满街漂亮妹，哪个归得程序员？
 #
 #----------------------------------------------------------------
-import time
 import os
+import time
 import zipfile
 import shutil
 import datetime
@@ -48,13 +48,21 @@ from region_backup.edit_json import Edit_Read as edit
 from region_backup.config import rb_info
 
 Prefix = '!!rb'
+# 备份总文件夹
+backup_home = "./rb_multi"
+# 备份文件夹位置
+backup_path = "./rb_multi/slot{0}"
+# 服务端存档位置
+world_path = f"./server/world"
 dim_dict = {"the_nether": "DIM-1", "the_end": "DIM1"}
 data_list = []
 user = None
 backup_state = None
-server_path = "./server/world"
-rb_multi = "./rb_multi"
 slot = 5
+# 停止操作符
+back_state = None
+# 回档槽位
+back_slot = None
 
 help_msg = '''
 ------ {1} {2} ------
@@ -104,9 +112,10 @@ def rb_make(source: InfoCommandSource, dic: dict):
         get_user_info(source)
         while len(data_list) < 4:
             time.sleep(0.01)
-        backup_pos = get_backup_pos(r, int(data_list[2][0] // 512), int(data_list[2][2] // 512))
+
         data = data_list.copy()
         data_list.clear()
+        backup_pos = get_backup_pos(r, int(data[2][0] // 512), int(data[2][2] // 512))
         data[0] = source.get_info().player
         data[1] = source.get_info().content
 
@@ -156,28 +165,127 @@ def rb_position_make():
     pass
 
 
-def rb_back():
-    pass
+@new_thread("rb_back")
+def rb_back(source: CommandSource, dic: dict):
+    global back_state, back_slot
+    # 判断槽位非空
+    if not os.path.exists(os.path.join(backup_path.format(dic["slot"]), "info.json")):
+        source.reply(f"该槽位为空不可回档")
+        return
+
+    # 等待确认
+    source.reply("是否进行回档操作")
+    while back_state is None:
+        time.sleep(0.01)
+
+    if back_state:
+        back_state = None
+        return
+    # 提示
+    source.reply("服务器将于10秒后关闭回档")
+    for stop_time in range(1, 10):
+        time.sleep(1)
+        if back_state:
+            back_state = None
+            source.reply("回档已停止")
+            return
+        source.reply(f"还有{10 - stop_time}秒关闭,输入!!rb abort停止")
+    back_state = None
+    back_slot = dic["slot"]
+    # 停止服务器
+    source.get_server().stop()
 
 
-def rb_confirm():
-    pass
+'''
+缺少对overwrite的info.json编写
+'''
 
 
-def rb_del():
-    pass
+def on_server_stop(server: PluginServerInterface, server_return_code: int):
+    global back_slot
+    temp_slot = f"{backup_home}/overwrite"
+    if back_slot:
+        server.logger.error(f"正在运行文件替换")
+        if os.path.exists(temp_slot):
+            shutil.rmtree(f"{temp_slot}")
+        os.makedirs(temp_slot)
+        # 打开压缩文件
+
+        for backup_file in ["entities.zip", "region.zip", "poi.zip"]:
+            with zipfile.ZipFile(f"{backup_path.format(back_slot)}/{backup_file}") as zf:
+
+                for over in zf.namelist():
+                    with zipfile.ZipFile(f"{temp_slot}/{backup_file}", 'w') as zipf:
+                        zipf.write(f"{world_path}/{backup_file.rstrip('zip')[:-1]}/{over}")
+
+                zf.extractall(f"{world_path}/{backup_file.rstrip('zip')[:-1]}")
+
+        back_slot = None
+
+        server.start()
 
 
+def rb_del(source: CommandSource, dic: dict):
+    # 获取文件夹地址
+    slot = backup_path.format(dic['slot'])
+    if bool(os.listdir(f"{slot}")):
+        # 删除整个文件夹
+        shutil.rmtree(slot)
+        # 创建文件夹
+        os.makedirs(slot)
+        source.reply(f"§4§l槽位{dic['slot']}删除成功")
+        return
+    # 判断槽位是否存在
+    source.reply(f"§4§l槽位{dic['slot']}不存在")
+
+
+@new_thread("rb_abort")
 def rb_abort():
-    pass
+    global back_state, operate_source
+    # 当前操作备份信息
+    # 是否来自本插件调用
+    operate_source = False
+    back_state = True
 
 
-def rb_list():
-    pass
+@new_thread("rb_confirm")
+def rb_confirm():
+    global back_state
+    back_state = False
 
 
-def rb_reload():
-    pass
+def rb_list(source: CommandSource):
+    """
+    json文件格式
+    展示颜色
+    """
+    backup_list = [backup_dir for backup_dir in os.listdir(backup_home) if not backup_dir.isalpha()]
+    # 初始化消息
+    msg_list = ["[备份列表]"]
+    # 共计5个槽位
+    for script in backup_list:
+        try:
+            # 尝试打开每个存档中的信息json文件
+            with codecs.open(f"{backup_path.format(script[-1])}/info.json", "r", encoding="utf-8-sig") as backup_info:
+                # 获取存档信息
+                backup_show_info = json.load(backup_info)
+                msg = f'[槽位{script[-1]}] 备份时间:{backup_show_info["time"]} 备份注释:{backup_show_info["comment"]}'
+        except:
+            # 读取不到的输出
+            msg = f"[槽位{script[-1]}] 空"
+        msg_list.append(msg)
+
+    # 输出
+    show_msg = "\n".join(msg_list)
+    source.reply(show_msg)
+
+
+def rb_reload(source: CommandSource):
+    try:
+        source.get_server().reload_plugin("region_backup")
+        source.reply("§a§l插件已重载")
+    except Exception as e:
+        source.reply(f"§c§l重载插件失败: {e}")
 
 
 def get_chunk_pos(pos):
@@ -203,14 +311,14 @@ def check_folder(folder_path=None):
     if folder_path and not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
-    os.makedirs(rb_multi, exist_ok=True)
+    os.makedirs(backup_home, exist_ok=True)
 
     for i in range(1, slot + 1):
-        os.makedirs(os.path.join(rb_multi, f"slot{i}"), exist_ok=True)
+        os.makedirs(backup_path.format(i), exist_ok=True)
 
 
 def make_info_file(data):
-    file_path = os.path.join(rb_multi, "slot1", "info.json")
+    file_path = os.path.join(backup_path.format(1), "info.json")
 
     info = rb_info.get_default().serialize()
     info["time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -226,27 +334,28 @@ def make_info_file(data):
 
 
 def rename_slot():
-    shutil.rmtree(os.path.join(rb_multi, f"slot{slot}"))
+    move_dir()
+    shutil.rmtree(backup_path.format(slot))
     if slot > 1:
         for i in range(slot - 1, 0, -1):
-            os.rename(os.path.join(rb_multi, f"slot{i}"), os.path.join(rb_multi, f"slot{i + 1}"))
+            os.rename(backup_path.format(i), backup_path.format(i + 1))
 
-    os.makedirs(os.path.join(rb_multi, "slot1"))
+    os.makedirs(backup_path.format(1))
 
 
 def compress_files(valid_pos, data):
     if data[-1] in dim_dict:
-        path = os.path.join(server_path, dim_dict[data[-1]])
+        path = os.path.join(world_path, dim_dict[data[-1]])
 
     else:
-        path = server_path
+        path = world_path
 
     for folder, positions in valid_pos.items():
         # 获取坐标的横纵坐标值
         if not positions:
             continue
 
-        with zipfile.ZipFile(os.path.join(rb_multi, "slot1", f"{folder}.zip"), 'w', zipfile.ZIP_DEFLATED) as zipf:
+        with zipfile.ZipFile(os.path.join(backup_path.format(1), f"{folder}.zip"), 'w', zipfile.ZIP_DEFLATED) as zipf:
             for pos in positions:
                 x, z = pos
 
@@ -259,10 +368,10 @@ def search_valid_pos(data, backup_pos):
     valid_pos = {"region": [], "poi": [], "entities": []}
 
     if data[-1] in dim_dict:
-        path = os.path.join(server_path, dim_dict[data[-1]])
+        path = os.path.join(world_path, dim_dict[data[-1]])
 
     else:
-        path = server_path
+        path = world_path
 
     for folder, positions in valid_pos.items():
         for pos in backup_pos:
@@ -295,6 +404,31 @@ def on_info(server: PluginServerInterface, info: Info):
         backup_state = 2
 
 
+def move_dir():
+    dic_dir = {}
+    # 文件夹对应状态
+    for item in [backup_dir for backup_dir in os.listdir(backup_home) if not backup_dir.isalpha()]:
+        dic_dir[item] = bool(os.listdir(f"{backup_home}/{item}"))
+
+    flag = []
+    for file in dic_dir.keys():
+        if dic_dir[file]:
+            # 非空
+            if bool(flag):
+                os.rename(f"{backup_home}/{file}", f"{backup_home}/{flag[0]}")
+                dic_dir[flag[0]] = True
+                dic_dir[file] = False
+                flag.append(file)
+                flag.pop(0)
+        else:
+            # 空
+            shutil.rmtree(f"{backup_home}/{file}")
+            flag.append(file)
+
+    for filename in flag:
+        os.makedirs(f"{backup_home}/{filename}")
+
+
 def on_load(server: PluginServerInterface, old):
     server.register_help_message('!!rb', '查看与区域备份有关的指令')
 
@@ -321,3 +455,4 @@ def on_load(server: PluginServerInterface, old):
     builder.register(server)
 
     check_folder()
+
