@@ -32,17 +32,15 @@
 #               别人笑我忒疯癫，我笑自己命太贱；
 #               不见满街漂亮妹，哪个归得程序员？
 #
-#----------------------------------------------------------------
 import os
 import time
-import zipfile
 import shutil
 import datetime
 import codecs
 import json
 
 from mcdreforged.api.all import *
-
+from zipfile import ZipFile
 from region_backup.json_message import Message
 from region_backup.edit_json import Edit_Read as edit
 from region_backup.config import rb_info
@@ -120,15 +118,16 @@ def rb_make(source: InfoCommandSource, dic: dict):
         data[1] = source.get_info().content
 
         # 保存游戏
-        source.get_server().execute("save-all")
+        source.get_server().execute("save-off")
         while backup_state == 1:
             time.sleep(0.01)
         backup_state = None
 
-        source.get_server().execute("save-off")
+        source.get_server().execute("save-all")
         while backup_state == 2:
             time.sleep(0.01)
 
+        source.reply("正在备份")
         valid_pos = search_valid_pos(data, backup_pos)
         check_folder()
 
@@ -136,8 +135,8 @@ def rb_make(source: InfoCommandSource, dic: dict):
 
         make_info_file(data)
 
-        compress_files(valid_pos, data)
-
+        copy_files(valid_pos, data)
+        source.reply("备份完成")
         source.get_server().execute("save-on")
         backup_state = None
 
@@ -201,24 +200,35 @@ def rb_back(source: CommandSource, dic: dict):
 '''
 
 
-def on_server_stop(server: PluginServerInterface, server_return_code: int):
+def on_server_stop(server: PluginServerInterface):
     global back_slot
-    temp_slot = f"{backup_home}/overwrite"
+    extra_slot = f"{backup_home}/overwrite"
     if back_slot:
         server.logger.error(f"正在运行文件替换")
-        if os.path.exists(temp_slot):
-            shutil.rmtree(f"{temp_slot}")
-        os.makedirs(temp_slot)
+        if os.path.exists(extra_slot):
+            shutil.rmtree(extra_slot)
+        os.makedirs(extra_slot)
+        os.makedirs(extra_slot + "/entities")
+        os.makedirs(extra_slot + "/region")
+        os.makedirs(extra_slot + "/poi")
+
         # 打开压缩文件
 
-        for backup_file in ["entities.zip", "region.zip", "poi.zip"]:
-            with zipfile.ZipFile(f"{backup_path.format(back_slot)}/{backup_file}") as zf:
+        with codecs.open(os.path.join(backup_path.format(back_slot), "info.json"), encoding="utf-8-sig") as fp:
+            info = json.load(fp)
+            dim = info["backup_dimension"]
+            if dim in dim_dict:
+                path = os.path.join(world_path, dim_dict[dim])
 
-                for over in zf.namelist():
-                    with zipfile.ZipFile(f"{temp_slot}/{backup_file}", 'w') as zipf:
-                        zipf.write(f"{world_path}/{backup_file.rstrip('zip')[:-1]}/{over}")
+            else:
+                path = world_path
 
-                zf.extractall(f"{world_path}/{backup_file.rstrip('zip')[:-1]}")
+        for backup_file in ["entities", "region", "poi"]:
+            lst = os.listdir(os.path.join(backup_path.format(back_slot), backup_file))
+            for i in lst:
+                shutil.copy2(os.path.join(path, backup_file, i), os.path.join(extra_slot,backup_file))
+
+            shutil.copytree(os.path.join(backup_path.format(back_slot), backup_file), os.path.join(path, backup_file),dirs_exist_ok=True)
 
         back_slot = None
 
@@ -334,7 +344,7 @@ def make_info_file(data):
 
 
 def rename_slot():
-    move_dir()
+    # move_dir()
     shutil.rmtree(backup_path.format(slot))
     if slot > 1:
         for i in range(slot - 1, 0, -1):
@@ -343,7 +353,7 @@ def rename_slot():
     os.makedirs(backup_path.format(1))
 
 
-def compress_files(valid_pos, data):
+def copy_files(valid_pos, data):
     if data[-1] in dim_dict:
         path = os.path.join(world_path, dim_dict[data[-1]])
 
@@ -355,13 +365,11 @@ def compress_files(valid_pos, data):
         if not positions:
             continue
 
-        with zipfile.ZipFile(os.path.join(backup_path.format(1), f"{folder}.zip"), 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for pos in positions:
-                x, z = pos
-
-                file_path = os.path.join(path, folder, f"r.{x}.{z}.mca")
-
-                zipf.write(file_path, arcname=f"r.{x}.{z}.mca")
+        os.makedirs(os.path.join(backup_path.format(1), f"{folder}"), exist_ok=True)
+        for pos in positions:
+            x, z = pos
+            file_path = os.path.join(path, folder, f"r.{x}.{z}.mca")
+            shutil.copy2(file_path, os.path.join(backup_path.format(1), f"{folder}"))
 
 
 def search_valid_pos(data, backup_pos):
@@ -390,18 +398,19 @@ def get_pos(info: Info, player):
 
 def on_info(server: PluginServerInterface, info: Info):
     global backup_state
-    if not user:
-        return
+    if user:
 
-    if info.content.startswith(f"{user} has the following entity data:") and info.is_from_server:
-        data_list.append(info.content.split(sep="entity data: ")[-1])
-        return
+        if info.content.startswith(f"{user} has the following entity data:") and info.is_from_server:
+            data_list.append(info.content.split(sep="entity data: ")[-1])
+            return
 
-    if info.content.startswith("Saved the game") and info.is_from_server:
-        backup_state = 1
+        if info.content.startswith("Saved the game") and info.is_from_server:
+            backup_state = 2
+            return
 
-    if info.content.startswith("Automatic saving is now disabled") and info.is_from_server:
-        backup_state = 2
+        if info.content.startswith("Automatic saving is now disabled") and info.is_from_server:
+            backup_state = 1
+            return
 
 
 def move_dir():
@@ -455,4 +464,3 @@ def on_load(server: PluginServerInterface, old):
     builder.register(server)
 
     check_folder()
-
