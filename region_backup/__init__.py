@@ -42,21 +42,28 @@ import json
 from mcdreforged.api.all import *
 from region_backup.json_message import Message
 from region_backup.edit_json import Edit_Read as edit
-from region_backup.config import rb_info
+from region_backup.config import rb_info, rb_config
 
 Prefix = '!!rb'
-# 备份总文件夹
-backup_home = "./rb_multi"
-# 备份文件夹位置
-backup_path = "./rb_multi/slot{0}"
-# 服务端存档位置
-world_path = f"./server/world"
+# 默认的插件配置文件
+cfg = rb_config.get_default().serialize()
+# 默认的备份总文件夹
+backup_path = "./rb_multi"
+# 默认的备份文件夹位置
+slot_path = "./rb_multi/slot{0}"
+# 默认的服务端存档位置
+world_path = "./server/world"
+# 地狱，末地世界区域文件位置
 dim_dict = {"the_nether": "DIM-1", "the_end": "DIM1"}
+# 全局分享列表
 data_list = []
+# 用户
 user = None
+# 备份状态符
 backup_state = None
+# 槽位数量
 slot = 5
-# 停止操作符
+# 回档状态符
 back_state = None
 # 回档槽位
 back_slot = None
@@ -86,25 +93,10 @@ def print_help_msg(source: CommandSource):
 def rb_make(source: InfoCommandSource, dic: dict):
     global backup_state
     if backup_state is None:
-        text = dic["r_des"]
+        text = dic["r_comment"]
         lst = text.split()
 
-        if len(lst) == 1:
-            try:
-                r = int(lst[0])
-                des = "空"
-
-            except ValueError:
-                source.reply("输入错误")
-                return
-        else:
-            try:
-                r = int(lst[0])
-                des = text.split(maxsplit=1)[1]
-
-            except ValueError:
-                source.reply("输入错误")
-                return
+        r = int(lst[0])
 
         get_user_info(source)
         while len(data_list) < 4:
@@ -132,9 +124,10 @@ def rb_make(source: InfoCommandSource, dic: dict):
 
         rename_slot()
 
+        copy_files(valid_pos, data)
+
         make_info_file(data)
 
-        copy_files(valid_pos, data)
         source.reply("备份完成")
         source.get_server().execute("save-on")
         backup_state = None
@@ -167,7 +160,7 @@ def rb_position_make():
 def rb_back(source: CommandSource, dic: dict):
     global back_state, back_slot
     # 判断槽位非空
-    if not os.path.exists(os.path.join(backup_path.format(dic["slot"]), "info.json")):
+    if not os.path.exists(os.path.join(slot_path.format(dic["slot"]), "info.json")):
         source.reply(f"该槽位为空不可回档")
         return
 
@@ -194,14 +187,9 @@ def rb_back(source: CommandSource, dic: dict):
     source.get_server().stop()
 
 
-'''
-缺少对overwrite的info.json编写
-'''
-
-
 def on_server_stop(server: PluginServerInterface, server_return_code: int):
     global back_slot
-    extra_slot = f"{backup_home}/overwrite"
+    extra_slot = f"{backup_path}/overwrite"
     if back_slot:
         server.logger.error(f"正在运行文件替换")
         if os.path.exists(extra_slot):
@@ -213,7 +201,7 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
 
         # 打开压缩文件
 
-        with codecs.open(os.path.join(backup_path.format(back_slot), "info.json"), encoding="utf-8-sig") as fp:
+        with codecs.open(os.path.join(slot_path.format(back_slot), "info.json"), encoding="utf-8-sig") as fp:
             info = json.load(fp)
             dim = info["backup_dimension"]
             if dim in dim_dict:
@@ -223,11 +211,11 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
                 path = world_path
 
         for backup_file in ["entities", "region", "poi"]:
-            lst = os.listdir(os.path.join(backup_path.format(back_slot), backup_file))
+            lst = os.listdir(os.path.join(slot_path.format(back_slot), backup_file))
             for i in lst:
                 shutil.copy2(os.path.join(path, backup_file, i), os.path.join(extra_slot, backup_file, i))
-                #os.remove(os.path.join(path, backup_file, i))
-                shutil.copy2(os.path.join(backup_path.format(back_slot), backup_file, i),
+                # os.remove(os.path.join(path, backup_file, i))
+                shutil.copy2(os.path.join(slot_path.format(back_slot), backup_file, i),
                              os.path.join(path, backup_file, i))
 
         back_slot = None
@@ -237,7 +225,7 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
 
 def rb_del(source: CommandSource, dic: dict):
     # 获取文件夹地址
-    slot = backup_path.format(dic['slot'])
+    slot = slot_path.format(dic['slot'])
     if bool(os.listdir(f"{slot}")):
         # 删除整个文件夹
         shutil.rmtree(slot)
@@ -249,44 +237,84 @@ def rb_del(source: CommandSource, dic: dict):
     source.reply(f"§4§l槽位{dic['slot']}不存在")
 
 
-@new_thread("rb_abort")
 def rb_abort():
     global back_state
     # 当前操作备份信息
-    # 是否来自本插件调用
     back_state = True
 
 
-@new_thread("rb_confirm")
 def rb_confirm():
     global back_state
     back_state = False
 
 
 def rb_list(source: CommandSource):
-    """
-    json文件格式
-    展示颜色
-    """
-    backup_list = [backup_dir for backup_dir in os.listdir(backup_home) if not backup_dir.isalpha()]
-    # 初始化消息
-    msg_list = ["[备份列表]"]
-    # 共计5个槽位
-    for script in backup_list:
-        try:
-            # 尝试打开每个存档中的信息json文件
-            with codecs.open(f"{backup_path.format(script[-1])}/info.json", "r", encoding="utf-8-sig") as backup_info:
-                # 获取存档信息
-                backup_show_info = json.load(backup_info)
-                msg = f'[槽位{script[-1]}] 备份时间:{backup_show_info["time"]} 备份注释:{backup_show_info["comment"]}'
-        except:
-            # 读取不到的输出
-            msg = f"[槽位{script[-1]}] 空"
-        msg_list.append(msg)
+    slot_list = [_slot for _slot in os.listdir(backup_path) if _slot.startswith("slot") and os.path.isdir(backup_path + rf"/{_slot}")]
 
-    # 输出
-    show_msg = "\n".join(msg_list)
-    source.reply(show_msg)
+    if not slot_list:
+        source.reply("没有槽位存在")
+        return
+
+    slots = sorted(slot_list, key=lambda x: int(x.replace("slot", "")))
+
+    msg_list = ["§d【槽位信息】"]
+
+    total_size = 0
+
+    for i in slots:
+        s = i.strip('slot')
+        json_path = os.path.join(backup_path, i, "info.json")
+        if os.path.exists(json_path):
+            with codecs.open(json_path, "r", "utf-8-sig") as fp:
+
+                info = json.load(fp)
+
+                if info:
+                    t = info["time"]
+                    cmt = info["comment"]
+                    dim = info['backup_dimension']
+                    size = get_file_size([os.path.join(backup_path, i)])
+                    total_size += size[-1]
+
+                    msg = f"#st=备份维度:{dim}#[槽位§6{s}§f] #sc=!!rb back {s}<>st=回档至槽位§6{s}#§a[▷] #sc=!!rb " \
+                          f"del {s}<>st=删除槽位§6{s}#§c[x] ##§a{size[0]} §f{t} 注释: {cmt}"
+
+                    msg_list.append(msg)
+        else:
+            msg = f"[槽位{s}] 空"
+            msg_list.append(msg)
+
+    if not total_size:
+        msg_list.append("备份占用总空间: 无")
+
+    else:
+        msg_list.append(f"备份占用总空间: §a{convert_bytes(total_size)}")
+
+    source.reply(Message.get_json_str("\n".join(msg_list)))
+
+
+def get_file_size(folder_list):
+    total_size = 0
+    for directory in folder_list:
+
+        for dirpath, dirnames, filenames in os.walk(directory):
+
+            for filename in filenames:
+
+                file_path = os.path.join(dirpath, filename)
+                # 确保文件存在
+                if os.path.exists(file_path):
+                    total_size += os.path.getsize(file_path)
+
+    return convert_bytes(total_size), total_size
+
+
+def convert_bytes(size_in_bytes):
+    """将字节转换为更易读的单位"""
+    for x in ['bytes', 'KB', 'MB', 'GB', 'TB']:
+        if size_in_bytes < 1024.0:
+            return f"{size_in_bytes:.2f}{x}"
+        size_in_bytes /= 1024.0
 
 
 def rb_reload(source: CommandSource):
@@ -316,18 +344,20 @@ def get_backup_pos(r, x, z):
     return backup_pos
 
 
-def check_folder(folder_path=None):
-    if folder_path and not os.path.exists(folder_path):
-        os.makedirs(folder_path)
+def check_folder():
+    if not os.path.exists("./config/Region_BackUp.json"):
 
-    os.makedirs(backup_home, exist_ok=True)
+        with codecs.open("./config/Region_BackUp.json", "w", encoding="utf-8-sig") as fp:
+            json.dump(cfg, fp, ensure_ascii=False, indent=4)
+
+    os.makedirs(backup_path, exist_ok=True)
 
     for i in range(1, slot + 1):
-        os.makedirs(backup_path.format(i), exist_ok=True)
+        os.makedirs(slot_path.format(i), exist_ok=True)
 
 
 def make_info_file(data):
-    file_path = os.path.join(backup_path.format(1), "info.json")
+    file_path = os.path.join(slot_path.format(1), "info.json")
 
     info = rb_info.get_default().serialize()
     info["time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -336,7 +366,7 @@ def make_info_file(data):
     info["user"] = data[0]
     info["user_pos"] = ",".join(str(pos) for pos in data[2])
     info["command"] = data[1]
-    info["comment"] = data[1].split(maxsplit=3)[-1]
+    info["comment"] = data[1].split(maxsplit=3)[-1] if len(data[1].split(maxsplit=2)[-1].split()) > 1 else "§7空"
 
     with codecs.open(file_path, "w", encoding="utf-8-sig") as fp:
         json.dump(info, fp, ensure_ascii=False, indent=4)
@@ -344,12 +374,12 @@ def make_info_file(data):
 
 def rename_slot():
     # move_dir()
-    shutil.rmtree(backup_path.format(slot))
+    shutil.rmtree(slot_path.format(slot))
     if slot > 1:
         for i in range(slot - 1, 0, -1):
-            os.rename(backup_path.format(i), backup_path.format(i + 1))
+            os.rename(slot_path.format(i), slot_path.format(i + 1))
 
-    os.makedirs(backup_path.format(1))
+    os.makedirs(slot_path.format(1))
 
 
 def copy_files(valid_pos, data):
@@ -366,11 +396,11 @@ def copy_files(valid_pos, data):
         if not positions:
             continue
 
-        os.makedirs(os.path.join(backup_path.format(1), f"{folder}"), exist_ok=True)
+        os.makedirs(os.path.join(slot_path.format(1), f"{folder}"), exist_ok=True)
         for pos in positions:
             x, z = pos
             file_path = os.path.join(path, folder, f"r.{x}.{z}.mca")
-            shutil.copy2(file_path, os.path.join(backup_path.format(1), folder, f"r.{x}.{z}.mca"))
+            shutil.copy2(file_path, os.path.join(slot_path.format(1), folder, f"r.{x}.{z}.mca"))
 
 
 def search_valid_pos(data, backup_pos):
@@ -417,36 +447,37 @@ def on_info(server: PluginServerInterface, info: Info):
 def move_dir():
     dic_dir = {}
     # 文件夹对应状态
-    for item in [backup_dir for backup_dir in os.listdir(backup_home) if not backup_dir.isalpha()]:
-        dic_dir[item] = bool(os.listdir(f"{backup_home}/{item}"))
+    for item in [backup_dir for backup_dir in os.listdir(backup_path) if not backup_dir.isalpha()]:
+        dic_dir[item] = bool(os.listdir(f"{backup_path}/{item}"))
 
     flag = []
     for file in dic_dir.keys():
         if dic_dir[file]:
             # 非空
             if bool(flag):
-                os.rename(f"{backup_home}/{file}", f"{backup_home}/{flag[0]}")
+                os.rename(f"{backup_path}/{file}", f"{backup_path}/{flag[0]}")
                 dic_dir[flag[0]] = True
                 dic_dir[file] = False
                 flag.append(file)
                 flag.pop(0)
         else:
             # 空
-            shutil.rmtree(f"{backup_home}/{file}")
+            shutil.rmtree(f"{backup_path}/{file}")
             flag.append(file)
 
     for filename in flag:
-        os.makedirs(f"{backup_home}/{filename}")
+        os.makedirs(f"{backup_path}/{filename}")
 
 
 def on_load(server: PluginServerInterface, old):
+    global cfg, backup_path, slot_path, world_path, slot
     server.register_help_message('!!rb', '查看与区域备份有关的指令')
 
     builder = SimpleCommandBuilder()
 
     builder.command("!!rb", print_help_msg)
-    builder.command("!!rb make <r_des>", rb_make)
-    builder.command("!!rb pos_make <x1> <z1> <x2> <z2> <dim_des>", rb_position_make)
+    builder.command("!!rb make <r_comment>", rb_make)
+    builder.command("!!rb pos_make <x1> <z1> <x2> <z2> <dim_comment>", rb_position_make)
     builder.command("!!rb back <slot>", rb_back)
     builder.command("!!rb confirm", rb_confirm)
     builder.command("!!rb del <slot>", rb_del)
@@ -454,14 +485,22 @@ def on_load(server: PluginServerInterface, old):
     builder.command("!!rb list", rb_list)
     builder.command("!!rb reload", rb_reload)
 
-    builder.arg("r_des", GreedyText)
+    builder.arg("r_comment", GreedyText)
     builder.arg("x1", Number)
     builder.arg("z1", Number)
     builder.arg("x2", Number)
     builder.arg("z2", Number)
-    builder.arg("dim_des", Integer)
+    builder.arg("dim_comment", Integer)
     builder.arg("slot", Integer)
 
     builder.register(server)
 
     check_folder()
+
+    with codecs.open("./config/Region_BackUp.json", encoding="utf-8-sig") as fp:
+        cfg = json.load(fp)
+
+    backup_path = cfg["backup_path"]
+    world_path = cfg["world_path"]
+    slot_path = backup_path + "/slot{0}"
+    slot = cfg["slot"]
