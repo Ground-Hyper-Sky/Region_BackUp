@@ -36,7 +36,7 @@
 服务器存档的路径
 
 ### minimum_permission_level
-默认值：{
+默认值：`{
         "make": 1,
         "pos_make": 1,
         "back": 2,
@@ -45,7 +45,7 @@
         "abort": 1,
         "reload": 2,
         "list": 0
-    }
+    }`
 一个字典，代表使用不同类型指令需要权限等级。数值含义见[此处](https://mcdreforged.readthedocs.io/zh_CN/latest/permission.html)
 
 把所有数值设置成 `0` 以让所有人均可操作
