@@ -2,6 +2,7 @@
 一个以区域为单位备份或回档的MCDR插件
 > [!TIP]
 > 如果您想为这个项目作贡献，请直接发送PR，而不是创建issue :)
+需要 `v2.6.0` 以上的 [MCDReforged](https://github.com/Fallen-Breath/MCDReforged)
 ## 命令格式说明
 
 `!!rb` 显示帮助信息
