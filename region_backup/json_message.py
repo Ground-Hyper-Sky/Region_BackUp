@@ -23,8 +23,9 @@ color_and_style_dict = {
     "§c": [RColor.red, "color"],
     "§d": [RColor.light_purple, "color"],
     "§e": [RColor.yellow, "color"],
+    "§f": [RColor.white, "color"],
     "§r": [RColor.reset, "color"]
-
+    
 }
 
 action_dict = {
