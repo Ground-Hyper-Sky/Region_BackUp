@@ -91,8 +91,9 @@ def print_help_msg(source: CommandSource):
 
 @new_thread("rb_make")
 def rb_make(source: InfoCommandSource, dic: dict):
-    global backup_state
+    global backup_state, user
     if backup_state is None:
+        backup_state = False
         text = dic["r_comment"]
         lst = text.split()
 
@@ -110,14 +111,14 @@ def rb_make(source: InfoCommandSource, dic: dict):
 
         # 保存游戏
         source.get_server().execute("save-off")
-        while backup_state == 1:
+        while backup_state != 1:
             time.sleep(0.01)
-        backup_state = None
 
         source.get_server().execute("save-all flush")
-        while backup_state == 2:
+        while backup_state != 2:
             time.sleep(0.01)
 
+        user = None
         source.reply("正在备份")
         valid_pos = search_valid_pos(data, backup_pos)
         check_folder()
@@ -149,7 +150,6 @@ def get_user_info(source):
 
         data_list.append([float(pos.strip('d')) for pos in data_list[0].strip("[]").split(',')])
         data_list.append(data_list[1].strip('"minecraft:"'))
-        user = None
 
 
 def rb_position_make():
@@ -225,16 +225,18 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
 
 def rb_del(source: CommandSource, dic: dict):
     # 获取文件夹地址
-    slot = slot_path.format(dic['slot'])
-    if bool(os.listdir(f"{slot}")):
-        # 删除整个文件夹
-        shutil.rmtree(slot)
+    s = slot_path.format(dic['slot'])
+    # 删除整个文件夹
+    if os.path.exists(s):
+        shutil.rmtree(s, ignore_errors=True)
         # 创建文件夹
-        os.makedirs(slot)
+        os.makedirs(s, exist_ok=True)
         source.reply(f"§4§l槽位{dic['slot']}删除成功")
         return
-    # 判断槽位是否存在
+
+        # 判断槽位是否存在
     source.reply(f"§4§l槽位{dic['slot']}不存在")
+    os.makedirs(s, exist_ok=True)
 
 
 def rb_abort():
@@ -249,7 +251,8 @@ def rb_confirm():
 
 
 def rb_list(source: CommandSource):
-    slot_list = [_slot for _slot in os.listdir(backup_path) if _slot.startswith("slot") and os.path.isdir(backup_path + rf"/{_slot}")]
+    slot_list = [_slot for _slot in os.listdir(backup_path) if
+                 _slot.startswith("slot") and os.path.isdir(backup_path + rf"/{_slot}")]
 
     if not slot_list:
         source.reply("没有槽位存在")
@@ -281,7 +284,7 @@ def rb_list(source: CommandSource):
 
                     msg_list.append(msg)
         else:
-            msg = f"[槽位{s}] 空"
+            msg = f"[槽位§6{s}§f] 空"
             msg_list.append(msg)
 
     if not total_size:
@@ -318,6 +321,8 @@ def convert_bytes(size_in_bytes):
 
 
 def rb_reload(source: CommandSource):
+    global user, backup_state, back_state, back_slot
+    user = backup_state = back_state = back_slot = None
     try:
         source.get_server().reload_plugin("region_backup")
         source.reply("§a§l插件已重载")
@@ -346,7 +351,6 @@ def get_backup_pos(r, x, z):
 
 def check_folder():
     if not os.path.exists("./config/Region_BackUp.json"):
-
         with codecs.open("./config/Region_BackUp.json", "w", encoding="utf-8-sig") as fp:
             json.dump(cfg, fp, ensure_ascii=False, indent=4)
 
