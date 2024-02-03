@@ -22,3 +22,30 @@
 `!!rb list` 显示各槽位的存档信息
 
 `!!rb reload` 重载插件
+
+## 配置文件选项说明
+
+配置文件为 `config/region_backup.json`。它会在第一次运行时自动生成
+
+### backup_path
+默认值：`./rb_multi`
+存储备份文件的路径
+
+### word_path
+默认值：`./server/world/`
+服务器存档的路径
+
+### minimum_permission_level
+默认值：{
+        "make": 1,
+        "pos_make": 1,
+        "back": 2,
+        "del": 2,
+        "confirm": 1,
+        "abort": 1,
+        "reload": 2,
+        "list": 0
+    }
+一个字典，代表使用不同类型指令需要权限等级。数值含义见[此处](https://mcdreforged.readthedocs.io/zh_CN/latest/permission.html)
+
+把所有数值设置成 `0` 以让所有人均可操作
