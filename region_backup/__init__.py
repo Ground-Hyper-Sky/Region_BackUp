@@ -1,37 +1,3 @@
-#                       _oo0oo_
-#                      o8888888o
-#                      88" . "88
-#                      (| -_- |)
-#                      0\  =  /0
-#                    ___/`---'\___
-#                  .' \\|     |// '.
-#                 / \\|||  :  |||// \
-#                / _||||| -:- |||||- \
-#               |   | \\\  - /// |   |
-#               | \_|  ''\---/''  |_/ |
-#               \  .-\__  '-'  ___/-. /
-#             ___'. .'  /--.--\  `. .'___
-#          ."" '<  `.___\_<|>_/___.' >' "".
-#         | | :  `- \`.;`\ _ /`;.`/ - ` : | |
-#         \  \ `_.   \_ __\ /__ _/   .-` /  /
-#     =====`-.____`.___ \_____/___.-`___.-'=====
-#                       `=---='
-#
-#
-#     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#
-#           佛祖保佑       永不宕机     永无BUG
-#
-#       佛曰:
-#               写字楼里写字间，写字间里程序员；
-#               程序人员写程序，又拿程序换酒钱。
-#               酒醒只在网上坐，酒醉还来网下眠；
-#               酒醉酒醒日复日，网上网下年复年。
-#               但愿老死电脑间，不愿鞠躬老板前；
-#               奔驰宝马贵者趣，公交自行程序员。
-#               别人笑我忒疯癫，我笑自己命太贱；
-#               不见满街漂亮妹，哪个归得程序员？
-#
 import os
 import time
 import shutil
@@ -101,6 +67,11 @@ def rb_make(source: InfoCommandSource, dic: dict):
             lst = text.split()
 
             r = int(lst[0])
+
+            if r < 0:
+                source.reply("§c备份半径应为大于等于0的整数!")
+                backup_state = None
+                return
 
             source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
             t1 = time.time()
@@ -177,7 +148,7 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
             source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
             t1 = time.time()
 
-            backup_pos = get_backup_pos(pos_list=[(x1 // 512, x2 // 512), (z1 // 512, z2 // 512)])
+            backup_pos = get_backup_pos(pos_list=[(int(x1 // 512), int(x2 // 512)), (int(z1 // 512), int(z2 // 512))])
             user = source.get_info().is_user
             # 保存游戏
             source.get_server().execute("save-off")
@@ -189,6 +160,11 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
                 time.sleep(0.01)
             user = None
             valid_pos = search_valid_pos(dim, backup_pos)
+
+            if all(not v for v in valid_pos.values()):
+                backup_state = None
+                source.reply("§c本次备份无效,根据输入的坐标,未找到对应的区域")
+                source.get_server().execute("save-on")
 
             rename_slot()
 
@@ -243,7 +219,13 @@ def rb_back(source: InfoCommandSource, dic: dict):
     global back_state, back_slot
     # 判断槽位非空
     if not os.path.exists(os.path.join(slot_path.format(dic["slot"]), "info.json")):
-        source.reply(f"该槽位为空")
+        source.reply("§c该槽位无info.json文件,无法回档")
+        return
+
+    if not get_file_size([os.path.join(slot_path.format(dic["slot"]), "entities"),
+                          os.path.join(slot_path.format(dic["slot"]), "poi"),
+                          os.path.join(slot_path.format(dic["slot"]), "region")])[-1]:
+        source.reply("§c该槽位无区域文件,无法回档")
         return
 
     try:
@@ -258,21 +240,24 @@ def rb_back(source: InfoCommandSource, dic: dict):
                 cmt = info["comment"]
 
             source.reply(Message.get_json_str("\n".join([f"[RBU] 准备将存档恢复至槽位§6{dic['slot']}§f，日期 {t}; 注释: {cmt}",
-                                                         "[RBU] 使用#sc=!!rb confirm<>st=点击确认#§7!!rb confirm §f确认§c回档§f，#sc=!!rb abort<>st=点击取消#§7!!qb abort §f取消"])))
+                                                         "[RBU] 使用#sc=!!rb confirm<>st=点击确认#§7!!rb confirm "
+                                                         "§f确认§c回档§f，#sc=!!rb abort<>st=点击取消#§7!!qb abort §f取消"])))
 
             while not back_state:
                 time.sleep(0.01)
 
             if back_state is True:
+                source.reply("§a回档已取消")
                 back_state = None
                 return
             # 提示
+
             source.get_server().broadcast("§c服务器将于10秒后关闭回档!")
             for stop_time in range(1, 10):
                 time.sleep(1)
                 if back_state is True:
                     back_state = None
-                    source.reply("回档已取消")
+                    source.reply("§a回档已取消")
                     return
                 source.get_server().broadcast(Message.get_json_str("\n".join(
                     [f"§a服务器还有{10 - stop_time}秒关闭，输入#sc=!!rb abort<>st=终止回档#§c!!rb abort§f来停止回档到槽位§6{dic['slot']}"])))
@@ -319,12 +304,13 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
                     path = world_path
 
             for backup_file in ["entities", "region", "poi"]:
-                lst = os.listdir(os.path.join(slot_path.format(back_slot), backup_file))
-                for i in lst:
-                    shutil.copy2(os.path.join(path, backup_file, i), os.path.join(extra_slot, backup_file, i))
-                    # os.remove(os.path.join(path, backup_file, i))
-                    shutil.copy2(os.path.join(slot_path.format(back_slot), backup_file, i),
-                                 os.path.join(path, backup_file, i))
+                if get_file_size([os.path.join(slot_path.format(back_slot), backup_file)])[-1]:
+                    lst = os.listdir(os.path.join(slot_path.format(back_slot), backup_file))
+                    for i in lst:
+                        shutil.copy2(os.path.join(path, backup_file, i), os.path.join(extra_slot, backup_file, i))
+
+                        shutil.copy2(os.path.join(slot_path.format(back_slot), backup_file, i),
+                                     os.path.join(path, backup_file, i))
 
             back_slot = None
 
@@ -630,6 +616,6 @@ def on_load(server: PluginServerInterface, old):
     for literal in command_literals:
         permission = level_dict[literal]
         builder.literal(literal).requires(require.has_permission(permission),
-                                          failure_message_getter=lambda err: "你没有运行该指令的权限!")
+                                          failure_message_getter=lambda err: "你没有运行该指令的权限")
 
     builder.register(server)
