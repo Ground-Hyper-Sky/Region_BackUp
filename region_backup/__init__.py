@@ -235,7 +235,7 @@ def get_user_info(source):
             time.sleep(0.01)
 
         data_list.append([float(pos.strip('d')) for pos in data_list[0].strip("[]").split(',')])
-        data_list.append(data_list[1].strip('"minecraft:"'))
+        data_list.append(data_list[1].replace("minecraft:", "").strip('"'))
 
 
 @new_thread("rb_back")
@@ -519,7 +519,7 @@ def rename_slot():
                 os.rename(slot_path.format(i), slot_path.format(i + 1))
 
         os.makedirs(slot_path.format(1))
-        
+
     except:
         for i in range(1, slot + 1):
             os.makedirs(slot_path.format(i), exist_ok=True)
@@ -570,7 +570,7 @@ def on_info(server: PluginServerInterface, info: Info):
     global backup_state
     if user:
 
-        if info.content.startswith(f"{user} has the following entity data:") and info.is_from_server:
+        if info.content.startswith(f"{user} has the following entity data: ") and info.is_from_server:
             data_list.append(info.content.split(sep="entity data: ")[-1])
             return
 
