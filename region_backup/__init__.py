@@ -1,37 +1,3 @@
-#                       _oo0oo_
-#                      o8888888o
-#                      88" . "88
-#                      (| -_- |)
-#                      0\  =  /0
-#                    ___/`---'\___
-#                  .' \\|     |// '.
-#                 / \\|||  :  |||// \
-#                / _||||| -:- |||||- \
-#               |   | \\\  - /// |   |
-#               | \_|  ''\---/''  |_/ |
-#               \  .-\__  '-'  ___/-. /
-#             ___'. .'  /--.--\  `. .'___
-#          ."" '<  `.___\_<|>_/___.' >' "".
-#         | | :  `- \`.;`\ _ /`;.`/ - ` : | |
-#         \  \ `_.   \_ __\ /__ _/   .-` /  /
-#     =====`-.____`.___ \_____/___.-`___.-'=====
-#                       `=---='
-#
-#
-#     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#
-#           佛祖保佑       永不宕机     永无BUG
-#
-#       佛曰:
-#               写字楼里写字间，写字间里程序员；
-#               程序人员写程序，又拿程序换酒钱。
-#               酒醒只在网上坐，酒醉还来网下眠；
-#               酒醉酒醒日复日，网上网下年复年。
-#               但愿老死电脑间，不愿鞠躬老板前；
-#               奔驰宝马贵者趣，公交自行程序员。
-#               别人笑我忒疯癫，我笑自己命太贱；
-#               不见满街漂亮妹，哪个归得程序员？
-#
 import os
 import time
 import shutil
@@ -41,7 +7,6 @@ import json
 
 from mcdreforged.api.all import *
 from region_backup.json_message import Message
-from region_backup.edit_json import Edit_Read as edit
 from region_backup.config import rb_info, rb_config
 
 Prefix = '!!rb'
@@ -61,7 +26,7 @@ data_list = []
 user = None
 # 备份状态符
 backup_state = None
-# 槽位数量
+# 槽位默认数量
 slot = 5
 # 回档状态符
 back_state = None
@@ -92,52 +57,149 @@ def print_help_msg(source: CommandSource):
 @new_thread("rb_make")
 def rb_make(source: InfoCommandSource, dic: dict):
     global backup_state, user
-    if backup_state is None:
-        backup_state = False
-        text = dic["r_comment"]
-        lst = text.split()
+    try:
+        if not source.get_info().is_player:
+            source.reply("§c§l该指令只能由玩家输入!")
+            return
+        if backup_state is None:
+            backup_state = False
+            text = dic["r_comment"]
+            lst = text.split()
 
-        r = int(lst[0])
+            r = int(lst[0])
 
-        get_user_info(source)
-        while len(data_list) < 4:
-            time.sleep(0.01)
+            if r < 0:
+                source.reply("§c备份半径应为大于等于0的整数!")
+                backup_state = None
+                return
 
-        data = data_list.copy()
-        data_list.clear()
-        backup_pos = get_backup_pos(r, int(data[2][0] // 512), int(data[2][2] // 512))
-        data[0] = source.get_info().player
-        data[1] = source.get_info().content
+            source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
+            t1 = time.time()
+            get_user_info(source)
+            while len(data_list) < 4:
+                time.sleep(0.01)
 
-        # 保存游戏
-        source.get_server().execute("save-off")
-        while backup_state != 1:
-            time.sleep(0.01)
+            data = data_list.copy()
+            data_list.clear()
+            backup_pos = get_backup_pos(r, int(data[2][0] // 512), int(data[2][2] // 512))
+            data[0] = source.get_info().player
+            data[1] = source.get_info().content
 
-        source.get_server().execute("save-all flush")
-        while backup_state != 2:
-            time.sleep(0.01)
+            # 保存游戏
+            source.get_server().execute("save-off")
+            while backup_state != 1:
+                time.sleep(0.01)
 
+            source.get_server().execute("save-all flush")
+            while backup_state != 2:
+                time.sleep(0.01)
+
+            user = None
+            valid_pos = search_valid_pos(data[-1], backup_pos)
+
+            rename_slot()
+
+            copy_files(valid_pos, data[-1])
+
+            make_info_file(data=data)
+
+            t2 = time.time()
+            source.get_server().broadcast(f"[RBU] §a备份§f完成，耗时§6{(t2 - t1):.2f}§f秒")
+            source.get_server().broadcast(
+                f"[RBU] 日期: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}; 注释: {text.split(maxsplit=1)[-1] if len(text.split()) > 1 else '§7空'}")
+
+            source.get_server().execute("save-on")
+            backup_state = None
+            return
+
+    except Exception as e:
         user = None
-        source.reply("正在备份")
-        valid_pos = search_valid_pos(data, backup_pos)
-        check_folder()
-
-        rename_slot()
-
-        copy_files(valid_pos, data)
-
-        make_info_file(data)
-
-        source.reply("备份完成")
-        source.get_server().execute("save-on")
         backup_state = None
+        source.reply(f"备份出错,错误信息:§c{e}")
+        source.get_server().execute("save-on")
+        return
+
+    source.reply("§c§l备份正在进行,请不要重复备份!")
+
+
+@new_thread("rb_pos_make")
+def rb_pos_make(source: InfoCommandSource, dic: dict):
+    global backup_state, user
+    try:
+
+        if backup_state is None:
+            backup_state = False
+            x1, z1, x2, z2 = dic["x1"], dic["z1"], dic["x2"], dic["z2"]
+
+            text = dic["dim_comment"]
+            lst = text.split()
+
+            dim = int(lst[0])
+
+            if dim == 0:
+                dim = "overworld"
+
+            elif dim == 1:
+                dim = "the_end"
+
+            else:
+                dim = "the_nether"
+
+            source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
+            t1 = time.time()
+
+            backup_pos = get_backup_pos(pos_list=[(int(x1 // 512), int(x2 // 512)), (int(z1 // 512), int(z2 // 512))])
+            user = source.get_info().is_user
+            # 保存游戏
+            source.get_server().execute("save-off")
+            while backup_state != 1:
+                time.sleep(0.01)
+
+            source.get_server().execute("save-all flush")
+            while backup_state != 2:
+                time.sleep(0.01)
+            user = None
+            valid_pos = search_valid_pos(dim, backup_pos)
+
+            if all(not v for v in valid_pos.values()):
+                backup_state = None
+                source.reply("§c本次备份无效,根据输入的坐标,未找到对应的区域")
+                source.get_server().execute("save-on")
+
+            rename_slot()
+
+            copy_files(valid_pos, dim)
+
+            make_info_file(backup_dim=dim,
+                           user_=source.get_info().player if source.get_info().player else "from_console",
+                           cmd=source.get_info().content,
+                           cmt="§7空" if len(text.split()) < 2 else text.split(maxsplit=1)[-1]
+                           )
+
+            t2 = time.time()
+            source.get_server().broadcast(f"[RBU] §a备份§f完成，耗时§6{(t2 - t1):.2f}§f秒")
+            source.get_server().broadcast(
+                f"[RBU] 日期: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}; 注释: {text.split(maxsplit=1)[-1] if len(text.split()) > 1 else '§7空'}")
+
+            source.get_server().execute("save-on")
+            backup_state = None
+            return
+
+    except Exception as e:
+        user = None
+        backup_state = None
+        source.reply(f"备份出错,错误信息:§c{e}")
+        source.get_server().execute("save-on")
+        return
+
+    source.reply("§c§l备份正在进行,请不要重复备份!")
 
 
 # 玩家信息类型有如下两种 坐标，即Pos 维度，即Dimension
 @new_thread("user_info")
 def get_user_info(source):
     global user, data_list
+
     user = source.get_info().player
 
     if user:
@@ -149,94 +211,134 @@ def get_user_info(source):
             time.sleep(0.01)
 
         data_list.append([float(pos.strip('d')) for pos in data_list[0].strip("[]").split(',')])
-        data_list.append(data_list[1].strip('"minecraft:"'))
-
-
-def rb_position_make():
-    pass
+        data_list.append(data_list[1].replace("minecraft:", "").strip('"'))
 
 
 @new_thread("rb_back")
-def rb_back(source: CommandSource, dic: dict):
+def rb_back(source: InfoCommandSource, dic: dict):
     global back_state, back_slot
     # 判断槽位非空
     if not os.path.exists(os.path.join(slot_path.format(dic["slot"]), "info.json")):
-        source.reply(f"该槽位为空不可回档")
+        source.reply("§c该槽位无info.json文件,无法回档")
         return
 
-    # 等待确认
-    source.reply("是否进行回档操作")
-    while back_state is None:
-        time.sleep(0.01)
-
-    if back_state:
-        back_state = None
+    if not get_file_size([os.path.join(slot_path.format(dic["slot"]), "entities"),
+                          os.path.join(slot_path.format(dic["slot"]), "poi"),
+                          os.path.join(slot_path.format(dic["slot"]), "region")])[-1]:
+        source.reply("§c该槽位无区域文件,无法回档")
         return
-    # 提示
-    source.reply("服务器将于10秒后关闭回档")
-    for stop_time in range(1, 10):
-        time.sleep(1)
-        if back_state:
+
+    try:
+
+        if back_state is None:
+
+            back_state = 0
+            # 等待确认
+            with codecs.open(os.path.join(slot_path.format(dic["slot"]), "info.json"), encoding="utf-8-sig") as fp:
+                info = json.load(fp)
+                t = info["time"]
+                cmt = info["comment"]
+
+            source.reply(Message.get_json_str("\n".join([f"[RBU] 准备将存档恢复至槽位§6{dic['slot']}§f，日期 {t}; 注释: {cmt}",
+                                                         "[RBU] 使用#sc=!!rb confirm<>st=点击确认#§7!!rb confirm "
+                                                         "§f确认§c回档§f，#sc=!!rb abort<>st=点击取消#§7!!qb abort §f取消"])))
+
+            while not back_state:
+                time.sleep(0.01)
+
+            if back_state is True:
+                source.reply("§a回档已取消")
+                back_state = None
+                return
+            # 提示
+
+            source.get_server().broadcast("§c服务器将于10秒后关闭回档!")
+            for stop_time in range(1, 10):
+                time.sleep(1)
+                if back_state is True:
+                    back_state = None
+                    source.reply("§a回档已取消")
+                    return
+                source.get_server().broadcast(Message.get_json_str("\n".join(
+                    [f"§a服务器还有{10 - stop_time}秒关闭，输入#sc=!!rb abort<>st=终止回档#§c!!rb abort§f来停止回档到槽位§6{dic['slot']}"])))
+
+            back_slot = dic["slot"]
+            # 停止服务器
+            source.get_server().stop()
             back_state = None
-            source.reply("回档已停止")
             return
-        source.reply(f"还有{10 - stop_time}秒关闭,输入!!rb abort停止")
-    back_state = None
-    back_slot = dic["slot"]
-    # 停止服务器
-    source.get_server().stop()
+
+    except Exception as e:
+        back_state = back_slot = None
+        source.reply(f"回档出错,错误信息:§c{e}")
+        return
+
+    source.reply("§c§l回档正在进行,请不要重复回档!")
 
 
 def on_server_stop(server: PluginServerInterface, server_return_code: int):
     global back_slot
-    extra_slot = f"{backup_path}/overwrite"
-    if back_slot:
-        server.logger.error(f"正在运行文件替换")
-        if os.path.exists(extra_slot):
-            shutil.rmtree(extra_slot)
-        os.makedirs(extra_slot)
-        os.makedirs(extra_slot + "/entities")
-        os.makedirs(extra_slot + "/region")
-        os.makedirs(extra_slot + "/poi")
 
-        # 打开压缩文件
+    try:
+        if back_slot:
+            if server_return_code != 0:
+                server.logger.error("服务端关闭异常,回档终止")
+                return
 
-        with codecs.open(os.path.join(slot_path.format(back_slot), "info.json"), encoding="utf-8-sig") as fp:
-            info = json.load(fp)
-            dim = info["backup_dimension"]
-            if dim in dim_dict:
-                path = os.path.join(world_path, dim_dict[dim])
+            server.logger.error("正在运行文件替换")
+            extra_slot = f"{backup_path}/overwrite"
+            if os.path.exists(extra_slot):
+                shutil.rmtree(extra_slot)
+            os.makedirs(extra_slot)
+            os.makedirs(extra_slot + "/entities")
+            os.makedirs(extra_slot + "/region")
+            os.makedirs(extra_slot + "/poi")
 
-            else:
-                path = world_path
+            with codecs.open(os.path.join(slot_path.format(back_slot), "info.json"), encoding="utf-8-sig") as fp:
+                info = json.load(fp)
+                dim = info["backup_dimension"]
+                if dim in dim_dict:
+                    path = os.path.join(world_path, dim_dict[dim])
 
-        for backup_file in ["entities", "region", "poi"]:
-            lst = os.listdir(os.path.join(slot_path.format(back_slot), backup_file))
-            for i in lst:
-                shutil.copy2(os.path.join(path, backup_file, i), os.path.join(extra_slot, backup_file, i))
-                # os.remove(os.path.join(path, backup_file, i))
-                shutil.copy2(os.path.join(slot_path.format(back_slot), backup_file, i),
-                             os.path.join(path, backup_file, i))
+                else:
+                    path = world_path
 
+            for backup_file in ["entities", "region", "poi"]:
+                if get_file_size([os.path.join(slot_path.format(back_slot), backup_file)])[-1]:
+                    lst = os.listdir(os.path.join(slot_path.format(back_slot), backup_file))
+                    for i in lst:
+                        shutil.copy2(os.path.join(path, backup_file, i), os.path.join(extra_slot, backup_file, i))
+
+                        shutil.copy2(os.path.join(slot_path.format(back_slot), backup_file, i),
+                                     os.path.join(path, backup_file, i))
+
+            back_slot = None
+
+            server.start()
+
+    except Exception as e:
         back_slot = None
-
-        server.start()
+        server.logger.error(f"回档出错,错误信息:§c{e}")
+        return
 
 
 def rb_del(source: CommandSource, dic: dict):
-    # 获取文件夹地址
-    s = slot_path.format(dic['slot'])
-    # 删除整个文件夹
-    if os.path.exists(s):
-        shutil.rmtree(s, ignore_errors=True)
-        # 创建文件夹
-        os.makedirs(s, exist_ok=True)
-        source.reply(f"§4§l槽位{dic['slot']}删除成功")
-        return
+    try:
+        # 获取文件夹地址
+        s = slot_path.format(dic['slot'])
+        # 删除整个文件夹
+        if os.path.exists(s):
+            shutil.rmtree(s, ignore_errors=True)
+            source.reply(f"§4§l槽位{dic['slot']}删除成功")
+            return
 
-        # 判断槽位是否存在
-    source.reply(f"§4§l槽位{dic['slot']}不存在")
-    os.makedirs(s, exist_ok=True)
+        source.reply(f"§4§l槽位{dic['slot']}不存在")
+
+    except Exception as e:
+        for i in range(1, slot + 1):
+            os.makedirs(slot_path.format(i), exist_ok=True)
+        source.reply(f"删除备份时出错,错误信息:§c{e}")
+        return
 
 
 def rb_abort():
@@ -247,53 +349,58 @@ def rb_abort():
 
 def rb_confirm():
     global back_state
-    back_state = False
+    back_state = 1
 
 
 def rb_list(source: CommandSource):
-    slot_list = [_slot for _slot in os.listdir(backup_path) if
-                 _slot.startswith("slot") and os.path.isdir(backup_path + rf"/{_slot}")]
+    try:
+        slot_list = [_slot for _slot in os.listdir(backup_path) if
+                     _slot.startswith("slot") and os.path.isdir(backup_path + rf"/{_slot}")]
 
-    if not slot_list:
-        source.reply("没有槽位存在")
-        return
+        if not slot_list:
+            source.reply("没有槽位存在")
+            return
 
-    slots = sorted(slot_list, key=lambda x: int(x.replace("slot", "")))
+        slots = sorted(slot_list, key=lambda x: int(x.replace("slot", "")))
 
-    msg_list = ["§d【槽位信息】"]
+        msg_list = ["§d【槽位信息】"]
 
-    total_size = 0
+        total_size = 0
 
-    for i in slots:
-        s = i.strip('slot')
-        json_path = os.path.join(backup_path, i, "info.json")
-        if os.path.exists(json_path):
-            with codecs.open(json_path, "r", "utf-8-sig") as fp:
+        for i in slots:
+            s = i.strip('slot')
+            json_path = os.path.join(backup_path, i, "info.json")
+            if os.path.exists(json_path):
+                with codecs.open(json_path, "r", "utf-8-sig") as fp:
 
-                info = json.load(fp)
+                    info = json.load(fp)
 
-                if info:
-                    t = info["time"]
-                    cmt = info["comment"]
-                    dim = info['backup_dimension']
-                    size = get_file_size([os.path.join(backup_path, i)])
-                    total_size += size[-1]
+                    if info:
+                        t = info["time"]
+                        cmt = info["comment"]
+                        dim = info['backup_dimension']
+                        size = get_file_size([os.path.join(backup_path, i)])
+                        total_size += size[-1]
 
-                    msg = f"#st=备份维度:{dim}#[槽位§6{s}§f] #sc=!!rb back {s}<>st=回档至槽位§6{s}#§a[▷] #sc=!!rb " \
-                          f"del {s}<>st=删除槽位§6{s}#§c[x] ##§a{size[0]} §f{t} 注释: {cmt}"
+                        msg = f"#st=备份维度:{dim}#[槽位§6{s}§f] #sc=!!rb back {s}<>st=回档至槽位§6{s}#§a[▷] #sc=!!rb " \
+                              f"del {s}<>st=删除槽位§6{s}#§c[x] ##§a{size[0]} §f{t} 注释: {cmt}"
 
-                    msg_list.append(msg)
+                        msg_list.append(msg)
+            else:
+                msg = f"[槽位§6{s}§f] 空"
+                msg_list.append(msg)
+
+        if not total_size:
+            msg_list.append("备份占用总空间: 无")
+
         else:
-            msg = f"[槽位§6{s}§f] 空"
-            msg_list.append(msg)
+            msg_list.append(f"备份占用总空间: §a{convert_bytes(total_size)}")
 
-    if not total_size:
-        msg_list.append("备份占用总空间: 无")
+        source.reply(Message.get_json_str("\n".join(msg_list)))
 
-    else:
-        msg_list.append(f"备份占用总空间: §a{convert_bytes(total_size)}")
-
-    source.reply(Message.get_json_str("\n".join(msg_list)))
+    except Exception as e:
+        source.reply(f"显示备份列表出错,错误信息:§c{e}")
+        return
 
 
 def get_file_size(folder_list):
@@ -321,30 +428,39 @@ def convert_bytes(size_in_bytes):
 
 
 def rb_reload(source: CommandSource):
-    global user, backup_state, back_state, back_slot
-    user = backup_state = back_state = back_slot = None
     try:
         source.get_server().reload_plugin("region_backup")
         source.reply("§a§l插件已重载")
     except Exception as e:
-        source.reply(f"§c§l重载插件失败: {e}")
+        source.reply(f"重载插件失败: §c§l{e}")
 
 
-def get_chunk_pos(pos):
-    return pos // 16
+def on_unload(server: PluginServerInterface):
+    global user, back_state, backup_state, back_slot
+    user = backup_state = back_state = back_slot = None
 
 
-def get_region_pos(pos):
-    return pos // 512
-
-
-def get_backup_pos(r, x, z):
+def get_backup_pos(r=None, x=None, z=None, pos_list=None):
     backup_pos = []
-    n = (2 * r + 1) // 2
 
-    for i in range(-n, n + 1):
-        for j in range(-n, n + 1):
-            backup_pos.append((x + i, z + j))
+    if not pos_list:
+
+        n = (2 * r + 1) // 2
+
+        for i in range(-n, n + 1):
+            for j in range(-n, n + 1):
+                backup_pos.append((x + i, z + j))
+
+        return backup_pos
+
+    left = min(pos_list[0])
+    right = max(pos_list[0])
+    top = max(pos_list[-1])
+    bottom = min(pos_list[-1])
+
+    for x in range(left, right + 1):
+        for z in range(bottom, top + 1):
+            backup_pos.append((x, z))
 
     return backup_pos
 
@@ -356,39 +472,48 @@ def check_folder():
 
     os.makedirs(backup_path, exist_ok=True)
 
-    for i in range(1, slot + 1):
-        os.makedirs(slot_path.format(i), exist_ok=True)
 
-
-def make_info_file(data):
+def make_info_file(data=None, backup_dim=None, user_=None, cmd=None, cmt=None):
     file_path = os.path.join(slot_path.format(1), "info.json")
 
     info = rb_info.get_default().serialize()
     info["time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    info["backup_dimension"] = data[-1]
-    info["user_dimension"] = data[-1]
-    info["user"] = data[0]
-    info["user_pos"] = ",".join(str(pos) for pos in data[2])
-    info["command"] = data[1]
-    info["comment"] = data[1].split(maxsplit=3)[-1] if len(data[1].split(maxsplit=2)[-1].split()) > 1 else "§7空"
+    info["backup_dimension"] = data[-1] if not backup_dim else backup_dim
+    info["user_dimension"] = data[-1] if not backup_dim else "无"
+    info["user"] = data[0] if not user_ else user_
+    info["user_pos"] = ",".join(str(pos) for pos in data[2]) if not user_ else "无"
+    info["command"] = data[1] if not cmd else cmd
+    if not cmt:
+        if len(data[1].split(maxsplit=2)[-1].split()) > 1:
+            info["comment"] = data[1].split(maxsplit=3)[-1]
+
+        else:
+            info["comment"] = "§7空"
+
+    else:
+        info["comment"] = cmt
 
     with codecs.open(file_path, "w", encoding="utf-8-sig") as fp:
         json.dump(info, fp, ensure_ascii=False, indent=4)
 
 
 def rename_slot():
-    # move_dir()
-    shutil.rmtree(slot_path.format(slot))
-    if slot > 1:
-        for i in range(slot - 1, 0, -1):
-            os.rename(slot_path.format(i), slot_path.format(i + 1))
+    try:
+        shutil.rmtree(slot_path.format(slot), ignore_errors=True)
+        if slot > 1:
+            for i in range(slot - 1, 0, -1):
+                os.rename(slot_path.format(i), slot_path.format(i + 1))
 
-    os.makedirs(slot_path.format(1))
+        os.makedirs(slot_path.format(1))
+
+    except:
+        for i in range(1, slot + 1):
+            os.makedirs(slot_path.format(i), exist_ok=True)
 
 
 def copy_files(valid_pos, data):
-    if data[-1] in dim_dict:
-        path = os.path.join(world_path, dim_dict[data[-1]])
+    if data in dim_dict:
+        path = os.path.join(world_path, dim_dict[data])
 
     else:
         path = world_path
@@ -410,8 +535,8 @@ def copy_files(valid_pos, data):
 def search_valid_pos(data, backup_pos):
     valid_pos = {"region": [], "poi": [], "entities": []}
 
-    if data[-1] in dim_dict:
-        path = os.path.join(world_path, dim_dict[data[-1]])
+    if data in dim_dict:
+        path = os.path.join(world_path, dim_dict[data])
 
     else:
         path = world_path
@@ -427,15 +552,11 @@ def search_valid_pos(data, backup_pos):
     return valid_pos
 
 
-def get_pos(info: Info, player):
-    pass
-
-
 def on_info(server: PluginServerInterface, info: Info):
     global backup_state
     if user:
 
-        if info.content.startswith(f"{user} has the following entity data:") and info.is_from_server:
+        if info.content.startswith(f"{user} has the following entity data: ") and info.is_from_server:
             data_list.append(info.content.split(sep="entity data: ")[-1])
             return
 
@@ -448,40 +569,33 @@ def on_info(server: PluginServerInterface, info: Info):
             return
 
 
-def move_dir():
-    dic_dir = {}
-    # 文件夹对应状态
-    for item in [backup_dir for backup_dir in os.listdir(backup_path) if not backup_dir.isalpha()]:
-        dic_dir[item] = bool(os.listdir(f"{backup_path}/{item}"))
-
-    flag = []
-    for file in dic_dir.keys():
-        if dic_dir[file]:
-            # 非空
-            if bool(flag):
-                os.rename(f"{backup_path}/{file}", f"{backup_path}/{flag[0]}")
-                dic_dir[flag[0]] = True
-                dic_dir[file] = False
-                flag.append(file)
-                flag.pop(0)
-        else:
-            # 空
-            shutil.rmtree(f"{backup_path}/{file}")
-            flag.append(file)
-
-    for filename in flag:
-        os.makedirs(f"{backup_path}/{filename}")
-
-
 def on_load(server: PluginServerInterface, old):
     global cfg, backup_path, slot_path, world_path, slot
+
+    check_folder()
+
+    for i in range(1, slot + 1):
+        os.makedirs(slot_path.format(i), exist_ok=True)
+
+    with codecs.open("./config/Region_BackUp.json", encoding="utf-8-sig") as fp:
+        cfg = json.load(fp)
+
+    backup_path = cfg["backup_path"]
+    world_path = cfg["world_path"]
+    slot_path = backup_path + "/slot{0}"
+    slot = cfg["slot"]
+
+    level_dict = cfg["minimum_permission_level"]
+
+    require = Requirements()
+
     server.register_help_message('!!rb', '查看与区域备份有关的指令')
 
     builder = SimpleCommandBuilder()
 
     builder.command("!!rb", print_help_msg)
     builder.command("!!rb make <r_comment>", rb_make)
-    builder.command("!!rb pos_make <x1> <z1> <x2> <z2> <dim_comment>", rb_position_make)
+    builder.command("!!rb pos_make <x1> <z1> <x2> <z2> <dim_comment>", rb_pos_make)
     builder.command("!!rb back <slot>", rb_back)
     builder.command("!!rb confirm", rb_confirm)
     builder.command("!!rb del <slot>", rb_del)
@@ -494,17 +608,14 @@ def on_load(server: PluginServerInterface, old):
     builder.arg("z1", Number)
     builder.arg("x2", Number)
     builder.arg("z2", Number)
-    builder.arg("dim_comment", Integer)
+    builder.arg("dim_comment", GreedyText)
     builder.arg("slot", Integer)
 
+    command_literals = ["make", "pos_make", "back", "confirm", "del", "abort", "list", "reload"]
+
+    for literal in command_literals:
+        permission = level_dict[literal]
+        builder.literal(literal).requires(require.has_permission(permission),
+                                          failure_message_getter=lambda err: "你没有运行该指令的权限")
+
     builder.register(server)
-
-    check_folder()
-
-    with codecs.open("./config/Region_BackUp.json", encoding="utf-8-sig") as fp:
-        cfg = json.load(fp)
-
-    backup_path = cfg["backup_path"]
-    world_path = cfg["world_path"]
-    slot_path = backup_path + "/slot{0}"
-    slot = cfg["slot"]
