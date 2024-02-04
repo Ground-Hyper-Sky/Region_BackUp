@@ -39,8 +39,8 @@ help_msg = '''
 §3作者：FRUITS_CANDY
 §d【格式说明】
 #sc=!!rb<>st=点击运行指令#§7{0} §a§l[▷] §e显示帮助信息
-#sc=!!rb make<>st=点击运行指令#§7{0} make §b<备份半径> <注释> §a§l[▷] §e以玩家为中心，备份边长为2倍半径+1的矩形区域
-#sc=!!rb pos_make<>st=点击运行指令#§7{0} pos_make §b<x1坐标> <z1坐标> <x2坐标> <z2坐标> <维度> <注释> §a§l[▷] §e给定两个坐标点，备份以两坐标点对应的区域坐标为顶点形成的矩形区域
+#sc=!!rb make<>st=点击运行指令#§7{0} make §b<区块半径> <注释> §a§l[▷] §e以玩家所在区块为中心，备份边长为2倍半径+1的区块所在区域
+#sc=!!rb pos_make<>st=点击运行指令#§7{0} pos_make §b<x1坐标> <z1坐标> <x2坐标> <z2坐标> <维度 0:主世界,1:末地,-1:地狱> <注释> §a§l[▷] §e给定两个坐标点，备份以两坐标点对应的区域坐标为顶点形成的矩形区域
 #sc=!!rb back<>st=点击运行指令#§7{0} back §b<槽位> §a§l[▷] §e回档指定槽位所对应的区域
 #sc=!!rb del<>st=点击运行指令#§7{0} del §b<槽位> §a§l[▷] §e删除某槽位
 #sc=!!rb confirm<>st=点击运行指令#§7{0} confirm §a§l[▷] §e再次确认是否回档
@@ -81,7 +81,7 @@ def rb_make(source: InfoCommandSource, dic: dict):
 
             data = data_list.copy()
             data_list.clear()
-            backup_pos = get_backup_pos(r, int(data[2][0] // 512), int(data[2][2] // 512))
+            backup_pos = get_backup_pos(r, int(data[2][0] // 16), int(data[2][2] // 16))
             data[0] = source.get_info().player
             data[1] = source.get_info().content
 
@@ -444,14 +444,13 @@ def get_backup_pos(r=None, x=None, z=None, pos_list=None):
     backup_pos = []
 
     if not pos_list:
+        #        n = (2 * r + 1) // 2
 
-        n = (2 * r + 1) // 2
+        #        for i in range(-n, n + 1):
+        #            for j in range(-n, n + 1):
+        #                backup_pos.append((x + i, z + j))
 
-        for i in range(-n, n + 1):
-            for j in range(-n, n + 1):
-                backup_pos.append((x + i, z + j))
-
-        return backup_pos
+        return get_backup_pos(pos_list=[((x - r)//32, (z + r)//32), ((x + r)//32, (z - r)//32)])
 
     left = min(pos_list[0])
     right = max(pos_list[0])
