@@ -40,7 +40,7 @@ help_msg = '''
 §d【格式说明】
 #sc=!!rb<>st=点击运行指令#§7{0} §a§l[▷] §e显示帮助信息
 #sc=!!rb make<>st=点击运行指令#§7{0} make §b<区块半径> <注释> §a§l[▷] §e以玩家所在区块为中心，备份边长为2倍半径+1的区块所在区域
-#sc=!!rb pos_make<>st=点击运行指令#§7{0} pos_make §b<x1坐标> <z1坐标> <x2坐标> <z2坐标> <维度 0:主世界,1:末地,-1:地狱> <注释> §a§l[▷] §e给定两个坐标点，备份以两坐标点对应的区域坐标为顶点形成的矩形区域
+#sc=!!rb pos_make<>st=点击运行指令#§7{0} pos_make §b<x1坐标> <z1坐标> <x2坐标> <z2坐标> <维度:0主世界,-1地狱,1末地> <注释> §a§l[▷] §e给定两个坐标点，备份以两坐标点对应的区域坐标为顶点形成的矩形区域
 #sc=!!rb back<>st=点击运行指令#§7{0} back §b<槽位> §a§l[▷] §e回档指定槽位所对应的区域
 #sc=!!rb del<>st=点击运行指令#§7{0} del §b<槽位> §a§l[▷] §e删除某槽位
 #sc=!!rb confirm<>st=点击运行指令#§7{0} confirm §a§l[▷] §e再次确认是否回档
@@ -52,6 +52,7 @@ help_msg = '''
 
 def print_help_msg(source: CommandSource):
     source.reply(Message.get_json_str(help_msg))
+    rb_list(source)
 
 
 @new_thread("rb_make")
@@ -341,14 +342,20 @@ def rb_del(source: CommandSource, dic: dict):
         return
 
 
-def rb_abort():
+def rb_abort(source: CommandSource):
     global back_state
     # 当前操作备份信息
+    if back_state is None:
+        source.reply("没有什么可中断的")
+        return
     back_state = True
 
 
-def rb_confirm():
+def rb_confirm(source:CommandSource):
     global back_state
+    if back_state is None:
+        source.reply("没有什么可确认的")
+        return
     back_state = 1
 
 
@@ -444,13 +451,8 @@ def get_backup_pos(r=None, x=None, z=None, pos_list=None):
     backup_pos = []
 
     if not pos_list:
-        #        n = (2 * r + 1) // 2
 
-        #        for i in range(-n, n + 1):
-        #            for j in range(-n, n + 1):
-        #                backup_pos.append((x + i, z + j))
-
-        return get_backup_pos(pos_list=[((x - r)//32, (z + r)//32), ((x + r)//32, (z - r)//32)])
+        return get_backup_pos(pos_list=[((x - r)//32, (x + r)//32), ((z + r)//32, (z - r)//32)])
 
     left = min(pos_list[0])
     right = max(pos_list[0])
@@ -545,7 +547,7 @@ def search_valid_pos(data, backup_pos):
             x, z = pos
             file = os.path.join(path, folder, f"r.{x}.{z}.mca")
 
-            if os.path.isfile(file):
+            if os.path.exists(file):
                 positions.append(pos)
 
     return valid_pos
