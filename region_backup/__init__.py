@@ -401,10 +401,10 @@ help_msg = '''
 '''.format(Prefix, "Region BackUp", "1.0.0")
 
 def print_help_msg(source: CommandSource):
-    help_msg_output = Message.get_json_str(help_msg)
+    help_msg_output = help_msg
+    source.reply(Message.get_json_str(help_msg_output))
     rb_list_output = rb_list(source)
-    combined_message = f"{help_msg_output}\n{rb_list_output}"
-    source.reply(combined_message)
+    source.reply(Message.get_json_str(rb_list_output))
 
 
 def get_file_size(folder_list):
