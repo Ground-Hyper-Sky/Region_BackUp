@@ -33,25 +33,7 @@ back_state = None
 # 回档槽位
 back_slot = None
 
-help_msg = '''
------- {1} {2} ------
-一个以区域为单位的§a备份回档§a插件
-§3作者：FRUITS_CANDY
-§d【格式说明】
-#sc=!!rb<>st=点击运行指令#§7{0} §a§l[▷] §e显示帮助信息
-#sc=!!rb make<>st=点击运行指令#§7{0} make §b<区块半径> <注释> §a§l[▷] §e以玩家所在区块为中心，备份边长为2倍半径+1的区块所在区域
-#sc=!!rb pos_make<>st=点击运行指令#§7{0} pos_make §b<x1坐标> <z1坐标> <x2坐标> <z2坐标> <维度 0:主世界,1:末地,-1:地狱> <注释> §a§l[▷] §e给定两个坐标点，备份以两坐标点对应的区域坐标为顶点形成的矩形区域
-#sc=!!rb back<>st=点击运行指令#§7{0} back §b<槽位> §a§l[▷] §e回档指定槽位所对应的区域
-#sc=!!rb del<>st=点击运行指令#§7{0} del §b<槽位> §a§l[▷] §e删除某槽位
-#sc=!!rb confirm<>st=点击运行指令#§7{0} confirm §a§l[▷] §e再次确认是否回档
-#sc=!!rb abort<>st=点击运行指令#§7{0} abort §a§l[▷] §e在任何时候键入此指令可中断回档
-#sc=!!rb list<>st=点击运行指令#§7{0} list §a§l[▷] §e显示各槽位的存档信息
-#sc=!!rb reload<>st=点击运行指令#§7{0} reload §a§l[▷] §e重载插件
-'''.format(Prefix, "Region BackUp", "1.0.0")
 
-
-def print_help_msg(source: CommandSource):
-    source.reply(Message.get_json_str(help_msg))
 
 
 @new_thread("rb_make")
@@ -401,6 +383,28 @@ def rb_list(source: CommandSource):
     except Exception as e:
         source.reply(f"显示备份列表出错,错误信息:§c{e}")
         return
+
+help_msg = '''
+------ {1} {2} ------
+一个以区域为单位的§a备份回档§a插件
+§3作者：FRUITS_CANDY
+§d【格式说明】
+#sc=!!rb<>st=点击运行指令#§7{0} §a§l[▷] §e显示帮助信息
+#sc=!!rb make<>st=点击运行指令#§7{0} make §b<区块半径> <注释> §a§l[▷] §e以玩家所在区块为中心，备份边长为2倍半径+1的区块所在区域
+#sc=!!rb pos_make<>st=点击运行指令#§7{0} pos_make §b<x1坐标> <z1坐标> <x2坐标> <z2坐标> <维度 0:主世界,1:末地,-1:地狱> <注释> §a§l[▷] §e给定两个坐标点，备份以两坐标点对应的区域坐标为顶点形成的矩形区域
+#sc=!!rb back<>st=点击运行指令#§7{0} back §b<槽位> §a§l[▷] §e回档指定槽位所对应的区域
+#sc=!!rb del<>st=点击运行指令#§7{0} del §b<槽位> §a§l[▷] §e删除某槽位
+#sc=!!rb confirm<>st=点击运行指令#§7{0} confirm §a§l[▷] §e再次确认是否回档
+#sc=!!rb abort<>st=点击运行指令#§7{0} abort §a§l[▷] §e在任何时候键入此指令可中断回档
+#sc=!!rb list<>st=点击运行指令#§7{0} list §a§l[▷] §e显示各槽位的存档信息
+#sc=!!rb reload<>st=点击运行指令#§7{0} reload §a§l[▷] §e重载插件
+'''.format(Prefix, "Region BackUp", "1.0.0")
+
+def print_help_msg(source: CommandSource):
+    help_msg_output = help_msg
+    source.reply(Message.get_json_str(help_msg_output))
+    rb_list_output = rb_list(source)
+    source.reply(Message.get_json_str(rb_list_output))
 
 
 def get_file_size(folder_list):
