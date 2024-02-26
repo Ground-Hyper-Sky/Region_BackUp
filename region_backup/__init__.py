@@ -391,8 +391,12 @@ def rb_back(source: InfoCommandSource, dic: dict):
             source.reply(Message.get_json_str("\n".join([f"[RBU] 准备将存档恢复至槽位§6{dic['slot']}§f，日期 {t}; 注释: {cmt}",
                                                          "[RBU] 使用#sc=!!rb confirm<>st=点击确认#§7!!rb confirm "
                                                          "§f确认§c回档§f，#sc=!!rb abort<>st=点击取消#§7!!qb abort §f取消"])))
-
+            t1 = time.time()
             while not back_state:
+                if time.time() - t1 > 10:
+                    source.reply("§a回档超时,已取消本次回档")
+                    back_state = None
+                    return
                 time.sleep(0.01)
 
             if back_state is True:
