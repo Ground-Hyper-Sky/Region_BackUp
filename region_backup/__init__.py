@@ -16,10 +16,14 @@ cfg = rb_config.get_default().serialize()
 backup_path = "./rb_multi"
 # 默认的备份文件夹位置
 slot_path = "./rb_multi/slot{0}"
+# 默认的overwrite文件夹位置
+overwrite_path = f"{backup_path}/overwrite"
 # 默认的服务端存档位置
 world_path = "./server/world"
 # 地狱，末地世界区域文件位置
 dim_dict = {"the_nether": "DIM-1", "the_end": "DIM1"}
+# 单维度完整备份列表
+dim_folder = ["data", "poi", "entities", "region"]
 # 全局分享列表
 data_list = []
 # 用户
@@ -42,14 +46,16 @@ help_msg = '''
 §d【格式说明】
 #sc=!!rb<>st=点击运行指令#§7{0} §a§l[▷] §e显示帮助信息
 #sc=!!rb make<>st=点击运行指令#§7{0} make §b<区块半径> <注释> §a§l[▷] §e以玩家所在区块为中心，备份边长为2倍半径+1的区块所在区域
-#sc=!!rb pos_make<>st=点击运行指令#§7{0} pos_make §b<x1坐标> <z1坐标> <x2坐标> <z2坐标> <维度:0主世界,-1地狱,1末地> <注释> §a§l[▷] §e给定两个坐标点，备份以两坐标点对应的区域坐标为顶点形成的矩形区域
+#sc=!!rb dim_make<>st=点击运行指令#§7{0} dim_make §b<维度:0主世界,-1地狱,1末地> <注释> §a§l[▷] §e备份单个维度的所有区域
+#sc=!!rb pos_make<>st=点击运行指令#§7{0} pos_make §b<x1坐标> <z1坐标> <x2坐标> <z2坐标> <维度:格式见上条指令> <注释> §a§l[▷] §e给定两个坐标点，备份以两坐标点对应的区域坐标为顶点形成的矩形区域
 #sc=!!rb back<>st=点击运行指令#§7{0} back §b<槽位> §a§l[▷] §e回档指定槽位所对应的区域
+#sc=!!rb restore<>st=点击运行指令#§7{0} restore §b<槽位> §a§l[▷] §e使存档还原到回档前状态
 #sc=!!rb del<>st=点击运行指令#§7{0} del §b<槽位> §a§l[▷] §e删除某槽位
 #sc=!!rb confirm<>st=点击运行指令#§7{0} confirm §a§l[▷] §e再次确认是否回档
 #sc=!!rb abort<>st=点击运行指令#§7{0} abort §a§l[▷] §e在任何时候键入此指令可中断回档
 #sc=!!rb list<>st=点击运行指令#§7{0} list §a§l[▷] §e显示各槽位的存档信息
 #sc=!!rb reload<>st=点击运行指令#§7{0} reload §a§l[▷] §e重载插件
-'''.format(Prefix, "Region BackUp", "1.2.0")
+'''.format(Prefix, "Region BackUp", "2.0.0")
 
 
 def print_help_msg(source: CommandSource):
@@ -238,6 +244,94 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
     source.reply("§c§l备份正在进行,请不要重复备份!")
 
 
+@new_thread("rb_dim_make")
+def rb_dim_make(source: InfoCommandSource, dic: dict):
+    global backup_state, user
+
+    try:
+        if backup_state is None:
+            backup_state = False
+
+            if "cmt" not in dic:
+                dic["cmt"] = "§7空"
+
+            dim = dic["dim"]
+
+            if dim == 0:
+                dim = "overworld"
+
+            elif dim == 1:
+                dim = "the_end"
+
+            elif dim == -1:
+                dim = "the_nether"
+
+            else:
+                source.reply("§c维度输入错误!")
+                return
+
+            source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
+
+            user = source.get_info().is_user
+            # 保存游戏
+            source.get_server().execute("save-off")
+            t = time.time()
+            while backup_state != 1:
+                if time.time() - t > time_out:
+                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().execute("save-on")
+                    backup_state = None
+                    user = None
+                    return
+                time.sleep(0.01)
+
+            source.get_server().execute("save-all flush")
+            t1 = time.time()
+            while backup_state != 2:
+                if time.time() - t1 > time_out:
+                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().execute("save-on")
+                    backup_state = None
+                    user = None
+                    return
+                time.sleep(0.01)
+
+            user = None
+
+            rename_slot()
+
+            if dim in dim_dict:
+                path = [dim_dict[dim]]
+
+            else:
+                path = dim_folder
+
+            for i in path:
+                shutil.copytree(os.path.join(world_path, i), os.path.join(backup_path, "slot1", i))
+
+            make_info_file(dic["cmt"], backup_dim=dim,
+                           user_=source.get_info().player if source.get_info().player else "from_console",
+                           cmd=source.get_info().content)
+
+            t2 = time.time()
+            source.get_server().broadcast(f"[RBU] §a备份§f完成，耗时§6{(t2 - t):.2f}§f秒")
+            source.get_server().broadcast(
+                f"[RBU] 日期: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}; 注释: {dic['cmt']}")
+
+            source.get_server().execute("save-on")
+            backup_state = None
+            return
+
+    except Exception as e:
+        user = None
+        backup_state = None
+        source.reply(f"备份出错,错误信息:§c{e}")
+        source.get_server().execute("save-on")
+        return
+
+    source.reply("§c§l备份正在进行,请不要重复备份!")
+
+
 # 玩家信息类型有如下两种 坐标，即Pos 维度，即Dimension
 @new_thread("user_info")
 def get_user_info(source):
@@ -266,15 +360,20 @@ def rb_back(source: InfoCommandSource, dic: dict):
     # 判断槽位非空
 
     if not dic:
-        dic["slot"] = 1
+        if source.get_info().content.split()[1] == "restore":
+            dic["slot"] = "overwrite"
+        else:
+            dic["slot"] = 1
 
-    if not os.path.exists(os.path.join(slot_path.format(dic["slot"]), "info.json")):
+    path = slot_path.format(dic["slot"]) if isinstance(dic["slot"], int) else os.path.join(backup_path, dic["slot"])
+
+    if not os.path.exists(os.path.join(path, "info.json")):
         source.reply("§c该槽位无info.json文件,无法回档")
         return
 
-    if not get_file_size([os.path.join(slot_path.format(dic["slot"]), "entities"),
-                          os.path.join(slot_path.format(dic["slot"]), "poi"),
-                          os.path.join(slot_path.format(dic["slot"]), "region")])[-1]:
+    if not get_file_size(
+            [os.path.join(path, f) for f in os.listdir(path) if
+             os.path.isdir(os.path.join(path, f))])[-1]:
         source.reply("§c该槽位无区域文件,无法回档")
         return
 
@@ -284,7 +383,7 @@ def rb_back(source: InfoCommandSource, dic: dict):
 
             back_state = 0
             # 等待确认
-            with codecs.open(os.path.join(slot_path.format(dic["slot"]), "info.json"), encoding="utf-8-sig") as fp:
+            with codecs.open(os.path.join(path, "info.json"), encoding="utf-8-sig") as fp:
                 info = json.load(fp)
                 t = info["time"]
                 cmt = info["comment"]
@@ -336,15 +435,17 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
                 return
 
             server.logger.error("正在运行文件替换")
-            extra_slot = f"{backup_path}/overwrite"
-            if os.path.exists(extra_slot):
-                shutil.rmtree(extra_slot)
-            os.makedirs(extra_slot)
-            os.makedirs(extra_slot + "/entities")
-            os.makedirs(extra_slot + "/region")
-            os.makedirs(extra_slot + "/poi")
+            if os.path.exists(overwrite_path) and back_slot != "overwrite":
+                shutil.rmtree(overwrite_path)
+                os.makedirs(overwrite_path)
 
-            with codecs.open(os.path.join(slot_path.format(back_slot), "info.json"), encoding="utf-8-sig") as fp:
+            path_ = slot_path.format(back_slot) if isinstance(back_slot, int) else os.path.join(backup_path,
+                                                                                                str(back_slot))
+
+            back_folder = [f for f in os.listdir(path_) if
+                           os.path.isdir(os.path.join(path_, f))]
+
+            with codecs.open(os.path.join(path_, "info.json"), encoding="utf-8-sig") as fp:
                 info = json.load(fp)
                 dim = info["backup_dimension"]
                 if dim in dim_dict:
@@ -353,18 +454,65 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
                 else:
                     path = world_path
 
-            for backup_file in ["entities", "region", "poi"]:
-                if get_file_size([os.path.join(slot_path.format(back_slot), backup_file)])[-1]:
-                    lst = os.listdir(os.path.join(slot_path.format(back_slot), backup_file))
-                    for i in lst:
-                        # 复制即将被替换的区域到overwrite
-                        shutil.copy2(os.path.join(path, backup_file, i), os.path.join(extra_slot, backup_file, i))
-                        # 将备份的区域对存档里对应的区域替换
-                        shutil.copy2(os.path.join(slot_path.format(back_slot), backup_file, i),
-                                     os.path.join(path, backup_file, i))
-                    # 复制本次回档槽位的info文件到overwrite
-                    shutil.copy2(os.path.join(slot_path.format(back_slot), "info.json"),
-                                 os.path.join(extra_slot, "info.json"))
+            if info["command"].split()[1] == "dim_make":
+
+                if info["backup_dimension"] == "overworld":
+                    if back_slot != "overwrite":
+                        for i in back_folder:
+                            shutil.copytree(os.path.join(path, i), os.path.join(overwrite_path, i))
+                            shutil.rmtree(os.path.join(path, i))
+                            shutil.copytree(os.path.join(path_, i), os.path.join(path, i))
+                        shutil.copy2(os.path.join(path_, "info.json"),
+                                     os.path.join(overwrite_path, "info.json"))
+
+                    else:
+                        for i in back_folder:
+                            shutil.rmtree(os.path.join(path, i))
+                            shutil.copytree(os.path.join(path_, i), os.path.join(path, i))
+
+                else:
+                    if back_slot != "overwrite":
+                        shutil.copytree(os.path.join(path), os.path.join(overwrite_path, dim_dict[dim]))
+                        shutil.rmtree(os.path.join(path))
+                        shutil.copytree(os.path.join(path_, dim_dict[dim]),
+                                        os.path.join(os.path.join(path)))
+                        shutil.copy2(os.path.join(path_, "info.json"),
+                                     os.path.join(overwrite_path, "info.json"))
+
+                    else:
+                        shutil.rmtree(os.path.join(path))
+                        shutil.copytree(os.path.join(path_, dim_dict[dim]),
+                                        os.path.join(os.path.join(path)))
+
+            else:
+
+                if back_slot != "overwrite":
+
+                    for i in back_folder:
+                        os.makedirs(overwrite_path + "/" + i)
+
+                    for backup_file in back_folder:
+                        if get_file_size([os.path.join(path_, backup_file)])[-1]:
+                            lst = os.listdir(os.path.join(path_, backup_file))
+                            for i in lst:
+                                # 复制即将被替换的区域到overwrite
+                                shutil.copy2(os.path.join(path, backup_file, i),
+                                             os.path.join(overwrite_path, backup_file, i))
+                                # 将备份的区域对存档里对应的区域替换
+                                shutil.copy2(os.path.join(path_, backup_file, i),
+                                             os.path.join(path, backup_file, i))
+                            # 复制本次回档槽位的info文件到overwrite
+                            shutil.copy2(os.path.join(path_, "info.json"),
+                                         os.path.join(overwrite_path, "info.json"))
+
+                else:
+                    for backup_file in back_folder:
+                        if get_file_size([os.path.join(path_, backup_file)])[-1]:
+                            lst = os.listdir(os.path.join(path_, backup_file))
+                            for i in lst:
+                                # 将备份的区域对存档里对应的区域替换
+                                shutil.copy2(os.path.join(path_, backup_file, i),
+                                             os.path.join(path, backup_file, i))
 
             back_slot = None
 
@@ -641,10 +789,13 @@ def on_load(server: PluginServerInterface, old):
     builder.command("!!rb", print_help_msg)
     builder.command("!!rb make <r> <cmt>", rb_make)
     builder.command("!!rb make <r>", rb_make)
+    builder.command("!!rb dim_make <dim> <cmt>", rb_dim_make)
+    builder.command("!!rb dim_make <dim>", rb_dim_make)
     builder.command("!!rb pos_make <x1> <z1> <x2> <z2> <dim> <cmt>", rb_pos_make)
     builder.command("!!rb pos_make <x1> <z1> <x2> <z2> <dim>", rb_pos_make)
     builder.command("!!rb back <slot>", rb_back)
     builder.command("!!rb back", rb_back)
+    builder.command("!!rb restore", rb_back)
     builder.command("!!rb confirm", rb_confirm)
     builder.command("!!rb del <slot>", rb_del)
     builder.command("!!rb abort", rb_abort)
@@ -660,7 +811,7 @@ def on_load(server: PluginServerInterface, old):
     builder.arg("cmt", GreedyText)
     builder.arg("slot", Integer)
 
-    command_literals = ["make", "pos_make", "back", "confirm", "del", "abort", "list", "reload"]
+    command_literals = ["make", "pos_make", "dim_make", "back", "restore", "confirm", "del", "abort", "list", "reload"]
 
     for literal in command_literals:
         permission = level_dict[literal]
