@@ -49,7 +49,7 @@ help_msg = '''
 #sc=!!rb dim_make<>st=点击运行指令#§7{0} dim_make §b<维度:0主世界,-1地狱,1末地> <注释> §a§l[▷] §e备份单个维度的所有区域
 #sc=!!rb pos_make<>st=点击运行指令#§7{0} pos_make §b<x1坐标> <z1坐标> <x2坐标> <z2坐标> <维度:格式见上条指令> <注释> §a§l[▷] §e给定两个坐标点，备份以两坐标点对应的区域坐标为顶点形成的矩形区域
 #sc=!!rb back<>st=点击运行指令#§7{0} back §b<槽位> §a§l[▷] §e回档指定槽位所对应的区域
-#sc=!!rb restore<>st=点击运行指令#§7{0} restore §b<槽位> §a§l[▷] §e使存档还原到回档前状态
+#sc=!!rb restore<>st=点击运行指令#§7{0} restore §b<槽位> §a§l[▷] §e使区域还原到上次回档前状态
 #sc=!!rb del<>st=点击运行指令#§7{0} del §b<槽位> §a§l[▷] §e删除某槽位
 #sc=!!rb confirm<>st=点击运行指令#§7{0} confirm §a§l[▷] §e再次确认是否回档
 #sc=!!rb abort<>st=点击运行指令#§7{0} abort §a§l[▷] §e在任何时候键入此指令可中断回档
@@ -305,7 +305,7 @@ def rb_dim_make(source: InfoCommandSource, dic: dict):
 
             else:
                 path = dim_folder
-                
+
             time.sleep(0.1)
 
             for i in path:
