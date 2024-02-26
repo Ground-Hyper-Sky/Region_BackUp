@@ -66,10 +66,11 @@ def rb_make(source: InfoCommandSource, dic: dict):
             return
         if backup_state is None:
             backup_state = False
-            text = dic["r_comment"]
-            lst = text.split()
 
-            r = int(lst[0])
+            if "cmt" not in dic:
+                dic["cmt"] = "§7空"
+
+            r = int(dic["r"])
 
             if r < 0:
                 source.reply("§c备份半径应为大于等于0的整数!")
@@ -79,10 +80,15 @@ def rb_make(source: InfoCommandSource, dic: dict):
             source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
 
             get_user_info(source)
-            if not data_list:
-                return
 
+            t = time.time()
             while len(data_list) < 4:
+                if time.time() - t > time_out:
+                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().execute("save-on")
+                    backup_state = None
+                    user = None
+                    return
                 time.sleep(0.01)
 
             data = data_list.copy()
@@ -121,12 +127,12 @@ def rb_make(source: InfoCommandSource, dic: dict):
 
             copy_files(valid_pos, data[-1])
 
-            make_info_file(data=data)
+            make_info_file(dic["cmt"], data=data)
 
             t2 = time.time()
-            source.get_server().broadcast(f"[RBU] §a备份§f完成，耗时§6{(t2 - t1):.2f}§f秒")
+            source.get_server().broadcast(f"[RBU] §a备份§f完成，耗时§6{(t2 - t):.2f}§f秒")
             source.get_server().broadcast(
-                f"[RBU] 日期: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}; 注释: {text.split(maxsplit=1)[-1] if len(text.split()) > 1 else '§7空'}")
+                f"[RBU] 日期: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}; 注释: {dic['cmt']}")
 
             source.get_server().execute("save-on")
             backup_state = None
@@ -144,17 +150,17 @@ def rb_make(source: InfoCommandSource, dic: dict):
 
 @new_thread("rb_pos_make")
 def rb_pos_make(source: InfoCommandSource, dic: dict):
-    global backup_state
+    global backup_state, user
     try:
 
         if backup_state is None:
             backup_state = False
             x1, z1, x2, z2 = dic["x1"], dic["z1"], dic["x2"], dic["z2"]
 
-            text = dic["dim_comment"]
-            lst = text.split()
+            if "cmt" not in dic:
+                dic["cmt"] = "§7空"
 
-            dim = int(lst[0])
+            dim = dic["dim"]
 
             if dim == 0:
                 dim = "overworld"
@@ -162,13 +168,17 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
             elif dim == 1:
                 dim = "the_end"
 
-            else:
+            elif dim == -1:
                 dim = "the_nether"
 
+            else:
+                source.reply("§c维度输入错误!")
+                return
+
             source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
-            t1 = time.time()
 
             backup_pos = get_backup_pos(pos_list=[(int(x1 // 512), int(x2 // 512)), (int(z1 // 512), int(z2 // 512))])
+            user = source.get_info().is_user
             # 保存游戏
             source.get_server().execute("save-off")
             t1 = time.time()
@@ -177,6 +187,7 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
                     source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
                     source.get_server().execute("save-on")
                     backup_state = None
+                    user = None
                     return
                 time.sleep(0.01)
 
@@ -187,8 +198,11 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
                     source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
                     source.get_server().execute("save-on")
                     backup_state = None
+                    user = None
                     return
                 time.sleep(0.01)
+
+            user = None
             valid_pos = search_valid_pos(dim, backup_pos)
 
             if all(not v for v in valid_pos.values()):
@@ -200,16 +214,15 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
 
             copy_files(valid_pos, dim)
 
-            make_info_file(backup_dim=dim,
+            make_info_file(dic["cmt"], backup_dim=dim,
                            user_=source.get_info().player if source.get_info().player else "from_console",
-                           cmd=source.get_info().content,
-                           cmt="§7空" if len(text.split()) < 2 else text.split(maxsplit=1)[-1]
+                           cmd=source.get_info().content
                            )
 
             t2 = time.time()
             source.get_server().broadcast(f"[RBU] §a备份§f完成，耗时§6{(t2 - t1):.2f}§f秒")
             source.get_server().broadcast(
-                f"[RBU] 日期: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}; 注释: {text.split(maxsplit=1)[-1] if len(text.split()) > 1 else '§7空'}")
+                f"[RBU] 日期: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}; 注释: {dic['cmt']}")
 
             source.get_server().execute("save-on")
             backup_state = None
@@ -217,6 +230,7 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
 
     except Exception as e:
         backup_state = None
+        user = None
         source.reply(f"备份出错,错误信息:§c{e}")
         source.get_server().execute("save-on")
         return
@@ -238,10 +252,7 @@ def get_user_info(source):
 
         t1 = time.time()
         while len(data_list) < 2:
-            if time.time() - t1 >= time_out:
-                data_list.clear()
-                user = None
-                source.reply("§c获取用户信息超时,请重试")
+            if time.time() - t1 > time_out:
                 return
             time.sleep(0.01)
 
@@ -253,6 +264,10 @@ def get_user_info(source):
 def rb_back(source: InfoCommandSource, dic: dict):
     global back_state, back_slot
     # 判断槽位非空
+
+    if not dic:
+        dic["slot"] = 1
+
     if not os.path.exists(os.path.join(slot_path.format(dic["slot"]), "info.json")):
         source.reply("§c该槽位无info.json文件,无法回档")
         return
@@ -511,7 +526,7 @@ def check_folder():
     os.makedirs(backup_path, exist_ok=True)
 
 
-def make_info_file(data=None, backup_dim=None, user_=None, cmd=None, cmt=None):
+def make_info_file(cmt, data=None, backup_dim=None, user_=None, cmd=None):
     file_path = os.path.join(slot_path.format(1), "info.json")
 
     info = rb_info.get_default().serialize()
@@ -521,15 +536,7 @@ def make_info_file(data=None, backup_dim=None, user_=None, cmd=None, cmt=None):
     info["user"] = data[0] if not user_ else user_
     info["user_pos"] = ",".join(str(pos) for pos in data[2]) if not user_ else "无"
     info["command"] = data[1] if not cmd else cmd
-    if not cmt:
-        if len(data[1].split(maxsplit=2)[-1].split()) > 1:
-            info["comment"] = data[1].split(maxsplit=3)[-1]
-
-        else:
-            info["comment"] = "§7空"
-
-    else:
-        info["comment"] = cmt
+    info["comment"] = cmt
 
     with codecs.open(file_path, "w", encoding="utf-8-sig") as fp:
         json.dump(info, fp, ensure_ascii=False, indent=4)
@@ -632,21 +639,25 @@ def on_load(server: PluginServerInterface, old):
     builder = SimpleCommandBuilder()
 
     builder.command("!!rb", print_help_msg)
-    builder.command("!!rb make <r_comment>", rb_make)
-    builder.command("!!rb pos_make <x1> <z1> <x2> <z2> <dim_comment>", rb_pos_make)
+    builder.command("!!rb make <r> <cmt>", rb_make)
+    builder.command("!!rb make <r>", rb_make)
+    builder.command("!!rb pos_make <x1> <z1> <x2> <z2> <dim> <cmt>", rb_pos_make)
+    builder.command("!!rb pos_make <x1> <z1> <x2> <z2> <dim>", rb_pos_make)
     builder.command("!!rb back <slot>", rb_back)
+    builder.command("!!rb back", rb_back)
     builder.command("!!rb confirm", rb_confirm)
     builder.command("!!rb del <slot>", rb_del)
     builder.command("!!rb abort", rb_abort)
     builder.command("!!rb list", rb_list)
     builder.command("!!rb reload", rb_reload)
 
-    builder.arg("r_comment", GreedyText)
     builder.arg("x1", Number)
     builder.arg("z1", Number)
     builder.arg("x2", Number)
     builder.arg("z2", Number)
-    builder.arg("dim_comment", GreedyText)
+    builder.arg("dim", Integer)
+    builder.arg("r", Integer)
+    builder.arg("cmt", GreedyText)
     builder.arg("slot", Integer)
 
     command_literals = ["make", "pos_make", "back", "confirm", "del", "abort", "list", "reload"]
