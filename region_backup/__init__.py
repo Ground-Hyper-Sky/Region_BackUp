@@ -305,6 +305,8 @@ def rb_dim_make(source: InfoCommandSource, dic: dict):
 
             else:
                 path = dim_folder
+                
+            time.sleep(0.1)
 
             for i in path:
                 shutil.copytree(os.path.join(world_path, i), os.path.join(backup_path, "slot1", i))
