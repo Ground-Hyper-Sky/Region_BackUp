@@ -32,6 +32,8 @@ slot = 5
 back_state = None
 # 回档槽位
 back_slot = None
+# 超时
+time_out = 5
 
 help_msg = '''
 ------ {1} {2} ------
@@ -47,7 +49,7 @@ help_msg = '''
 #sc=!!rb abort<>st=点击运行指令#§7{0} abort §a§l[▷] §e在任何时候键入此指令可中断回档
 #sc=!!rb list<>st=点击运行指令#§7{0} list §a§l[▷] §e显示各槽位的存档信息
 #sc=!!rb reload<>st=点击运行指令#§7{0} reload §a§l[▷] §e重载插件
-'''.format(Prefix, "Region BackUp", "1.0.0")
+'''.format(Prefix, "Region BackUp", "1.2.0")
 
 
 def print_help_msg(source: CommandSource):
@@ -75,8 +77,11 @@ def rb_make(source: InfoCommandSource, dic: dict):
                 return
 
             source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
-            t1 = time.time()
+
             get_user_info(source)
+            if not data_list:
+                return
+
             while len(data_list) < 4:
                 time.sleep(0.01)
 
@@ -88,11 +93,25 @@ def rb_make(source: InfoCommandSource, dic: dict):
 
             # 保存游戏
             source.get_server().execute("save-off")
+            t1 = time.time()
             while backup_state != 1:
+                if time.time() - t1 > time_out:
+                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().execute("save-on")
+                    backup_state = None
+                    user = None
+                    return
                 time.sleep(0.01)
 
             source.get_server().execute("save-all flush")
+            t1 = time.time()
             while backup_state != 2:
+                if time.time() - t1 > time_out:
+                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().execute("save-on")
+                    backup_state = None
+                    user = None
+                    return
                 time.sleep(0.01)
 
             user = None
@@ -125,7 +144,7 @@ def rb_make(source: InfoCommandSource, dic: dict):
 
 @new_thread("rb_pos_make")
 def rb_pos_make(source: InfoCommandSource, dic: dict):
-    global backup_state, user
+    global backup_state
     try:
 
         if backup_state is None:
@@ -150,16 +169,26 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
             t1 = time.time()
 
             backup_pos = get_backup_pos(pos_list=[(int(x1 // 512), int(x2 // 512)), (int(z1 // 512), int(z2 // 512))])
-            user = source.get_info().is_user
             # 保存游戏
             source.get_server().execute("save-off")
+            t1 = time.time()
             while backup_state != 1:
+                if time.time() - t1 > time_out:
+                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().execute("save-on")
+                    backup_state = None
+                    return
                 time.sleep(0.01)
 
             source.get_server().execute("save-all flush")
+            t1 = time.time()
             while backup_state != 2:
+                if time.time() - t1 > time_out:
+                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().execute("save-on")
+                    backup_state = None
+                    return
                 time.sleep(0.01)
-            user = None
             valid_pos = search_valid_pos(dim, backup_pos)
 
             if all(not v for v in valid_pos.values()):
@@ -187,7 +216,6 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
             return
 
     except Exception as e:
-        user = None
         backup_state = None
         source.reply(f"备份出错,错误信息:§c{e}")
         source.get_server().execute("save-on")
@@ -208,7 +236,13 @@ def get_user_info(source):
         source.get_server().execute(f"data get entity {user} Pos")
         source.get_server().execute(f"data get entity {user} Dimension")
 
+        t1 = time.time()
         while len(data_list) < 2:
+            if time.time() - t1 >= time_out:
+                data_list.clear()
+                user = None
+                source.reply("§c获取用户信息超时,请重试")
+                return
             time.sleep(0.01)
 
         data_list.append([float(pos.strip('d')) for pos in data_list[0].strip("[]").split(',')])
@@ -308,10 +342,14 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
                 if get_file_size([os.path.join(slot_path.format(back_slot), backup_file)])[-1]:
                     lst = os.listdir(os.path.join(slot_path.format(back_slot), backup_file))
                     for i in lst:
+                        # 复制即将被替换的区域到overwrite
                         shutil.copy2(os.path.join(path, backup_file, i), os.path.join(extra_slot, backup_file, i))
-
+                        # 将备份的区域对存档里对应的区域替换
                         shutil.copy2(os.path.join(slot_path.format(back_slot), backup_file, i),
                                      os.path.join(path, backup_file, i))
+                    # 复制本次回档槽位的info文件到overwrite
+                    shutil.copy2(os.path.join(slot_path.format(back_slot), "info.json"),
+                                 os.path.join(extra_slot, "info.json"))
 
             back_slot = None
 
@@ -351,7 +389,7 @@ def rb_abort(source: CommandSource):
     back_state = True
 
 
-def rb_confirm(source:CommandSource):
+def rb_confirm(source: CommandSource):
     global back_state
     if back_state is None:
         source.reply("没有什么可确认的")
@@ -451,8 +489,7 @@ def get_backup_pos(r=None, x=None, z=None, pos_list=None):
     backup_pos = []
 
     if not pos_list:
-
-        return get_backup_pos(pos_list=[((x - r)//32, (x + r)//32), ((z + r)//32, (z - r)//32)])
+        return get_backup_pos(pos_list=[((x - r) // 32, (x + r) // 32), ((z + r) // 32, (z - r) // 32)])
 
     left = min(pos_list[0])
     right = max(pos_list[0])
