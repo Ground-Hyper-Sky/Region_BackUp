@@ -368,7 +368,7 @@ def rb_back(source: InfoCommandSource, dic: dict):
     path = slot_path.format(dic["slot"]) if isinstance(dic["slot"], int) else os.path.join(backup_path, dic["slot"])
 
     if not os.path.exists(os.path.join(path, "info.json")):
-        source.reply("§c该槽位无info.json文件,无法回档")
+        source.reply("§c该槽位无info.json文件或槽位不存在,无法回档")
         return
 
     if not get_file_size(
