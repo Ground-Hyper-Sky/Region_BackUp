@@ -18,7 +18,9 @@ class rb_config(Serializable):
     minimum_permission_level: Dict[str, int] = {
         "make": 1,
         "pos_make": 1,
+        "dim_make": 1,
         "back": 2,
+        "restore": 2,
         "del": 2,
         "confirm": 1,
         "abort": 1,
@@ -26,3 +28,4 @@ class rb_config(Serializable):
         "list": 0
     }
     slot: int = 5
+
