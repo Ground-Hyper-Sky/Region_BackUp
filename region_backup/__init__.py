@@ -4,6 +4,7 @@ import shutil
 import datetime
 import codecs
 import json
+import re
 
 from mcdreforged.api.all import *
 from region_backup.json_message import Message
@@ -22,6 +23,8 @@ overwrite_path = f"{backup_path}/overwrite"
 world_path = "./server/world"
 # 地狱，末地世界区域文件位置
 dim_dict = {"the_nether": "DIM-1", "the_end": "DIM1"}
+# 维度对应表
+dim_list = {0: "overworld", 1: "the_end", -1: "the_nether"}
 # 单维度完整备份列表
 dim_folder = ["data", "poi", "entities", "region"]
 # 全局分享列表
@@ -46,16 +49,16 @@ help_msg = '''
 §d【格式说明】
 #sc=!!rb<>st=点击运行指令#§7{0} §a§l[▷] §e显示帮助信息
 #sc=!!rb make<>st=点击运行指令#§7{0} make §b<区块半径> <注释> §a§l[▷] §e以玩家所在区块为中心，备份边长为2倍半径+1的区块所在区域
-#sc=!!rb dim_make<>st=点击运行指令#§7{0} dim_make §b<维度:0主世界,-1地狱,1末地> <注释> §a§l[▷] §e备份单个维度的所有区域
+#sc=!!rb dim_make<>st=点击运行指令#§7{0} dim_make §b<维度:0主世界,-1地狱,1末地> <注释> §a§l[▷] §e备份给定维度的所有区域,维度间用,做区分 §a例 0 或 0,-1
 #sc=!!rb pos_make<>st=点击运行指令#§7{0} pos_make §b<x1坐标> <z1坐标> <x2坐标> <z2坐标> <维度:格式见上条指令> <注释> §a§l[▷] §e给定两个坐标点，备份以两坐标点对应的区域坐标为顶点形成的矩形区域
 #sc=!!rb back<>st=点击运行指令#§7{0} back §b<槽位> §a§l[▷] §e回档指定槽位所对应的区域
-#sc=!!rb restore<>st=点击运行指令#§7{0} restore §a§l[▷] §e使区域还原到上次回档前状态
+#sc=!!rb restore<>st=点击运行指令#§7{0} restore §b<槽位> §a§l[▷] §e使存档还原到回档前状态
 #sc=!!rb del<>st=点击运行指令#§7{0} del §b<槽位> §a§l[▷] §e删除某槽位
 #sc=!!rb confirm<>st=点击运行指令#§7{0} confirm §a§l[▷] §e再次确认是否回档
 #sc=!!rb abort<>st=点击运行指令#§7{0} abort §a§l[▷] §e在任何时候键入此指令可中断回档
 #sc=!!rb list<>st=点击运行指令#§7{0} list §a§l[▷] §e显示各槽位的存档信息
 #sc=!!rb reload<>st=点击运行指令#§7{0} reload §a§l[▷] §e重载插件
-'''.format(Prefix, "Region BackUp", "1.5.0")
+'''.format(Prefix, "Region BackUp", "1.6.0")
 
 
 def print_help_msg(source: CommandSource):
@@ -166,20 +169,14 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
             if "cmt" not in dic:
                 dic["cmt"] = "§7空"
 
-            dim = dic["dim"]
+            dim = int(dic["dim"])
 
-            if dim == 0:
-                dim = "overworld"
-
-            elif dim == 1:
-                dim = "the_end"
-
-            elif dim == -1:
-                dim = "the_nether"
-
-            else:
-                source.reply("§c维度输入错误!")
+            if dim not in dim_list:
+                backup_state = None
+                source.reply("§c维度输入错误")
                 return
+
+            dim = dim_list[dim]
 
             source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
 
@@ -257,18 +254,21 @@ def rb_dim_make(source: InfoCommandSource, dic: dict):
 
             dim = dic["dim"]
 
-            if dim == 0:
-                dim = "overworld"
-
-            elif dim == 1:
-                dim = "the_end"
-
-            elif dim == -1:
-                dim = "the_nether"
-
-            else:
-                source.reply("§c维度输入错误!")
+            res = re.findall(r'-\d+|\d+', dim)
+            dim = [int(s) if s[0] != '-' else -int(s[1:]) for s in res]
+            if len(dim) != len(set(dim)):
+                backup_state = None
+                source.reply("§c维度输入重复")
                 return
+
+            backup_list = []
+
+            for i in dim:
+                if i not in dim_list:
+                    backup_state = None
+                    source.reply("§c维度输入错误")
+                    return
+                backup_list.append(dim_list[i])
 
             source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
 
@@ -300,18 +300,21 @@ def rb_dim_make(source: InfoCommandSource, dic: dict):
 
             rename_slot()
 
-            if dim in dim_dict:
-                path = [dim_dict[dim]]
+            dim_path = []
 
-            else:
-                path = dim_folder
+            for i in backup_list:
+                if i in dim_dict:
+                    dim_path.append(dim_dict[i])
+                else:
+                    for j in dim_folder:
+                        dim_path.append(j)
 
             time.sleep(0.1)
 
-            for i in path:
+            for i in dim_path:
                 shutil.copytree(os.path.join(world_path, i), os.path.join(backup_path, "slot1", i))
 
-            make_info_file(dic["cmt"], backup_dim=dim,
+            make_info_file(dic["cmt"], backup_dim=",".join(backup_list),
                            user_=source.get_info().player if source.get_info().player else "from_console",
                            cmd=source.get_info().content)
 
@@ -390,9 +393,10 @@ def rb_back(source: InfoCommandSource, dic: dict):
                 t = info["time"]
                 cmt = info["comment"]
 
-            source.reply(Message.get_json_str("\n".join([f"[RBU] 准备将存档恢复至槽位§6{dic['slot']}§f，日期 {t}; 注释: {cmt}",
-                                                         "[RBU] 使用#sc=!!rb confirm<>st=点击确认#§7!!rb confirm "
-                                                         "§f确认§c回档§f，#sc=!!rb abort<>st=点击取消#§7!!qb abort §f取消"])))
+            source.reply(
+                Message.get_json_str("\n".join([f"[RBU] 准备将存档恢复至槽位§6{dic['slot']}§f，日期 {t}; 注释: {cmt}",
+                                                "[RBU] 使用#sc=!!rb confirm<>st=点击确认#§7!!rb confirm "
+                                                "§f确认§c回档§f，#sc=!!rb abort<>st=点击取消#§7!!rb abort §f取消"])))
             t1 = time.time()
             while not back_state:
                 if time.time() - t1 > 10:
@@ -415,7 +419,8 @@ def rb_back(source: InfoCommandSource, dic: dict):
                     source.reply("§a回档已取消")
                     return
                 source.get_server().broadcast(Message.get_json_str("\n".join(
-                    [f"§a服务器还有{10 - stop_time}秒关闭，输入#sc=!!rb abort<>st=终止回档#§c!!rb abort§f来停止回档到槽位§6{dic['slot']}"])))
+                    [
+                        f"§a服务器还有{10 - stop_time}秒关闭，输入#sc=!!rb abort<>st=终止回档#§c!!rb abort§f来停止回档到槽位§6{dic['slot']}"])))
 
             back_slot = dic["slot"]
             # 停止服务器
@@ -437,88 +442,84 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
     try:
         if back_slot:
             if server_return_code != 0:
+                back_slot = None
                 server.logger.error("服务端关闭异常,回档终止")
                 return
 
-            server.logger.error("正在运行文件替换")
+            server.logger.info("§a正在运行文件替换")
+
             if os.path.exists(overwrite_path) and back_slot != "overwrite":
                 shutil.rmtree(overwrite_path)
                 os.makedirs(overwrite_path)
 
             path_ = slot_path.format(back_slot) if isinstance(back_slot, int) else os.path.join(backup_path,
-                                                                                                str(back_slot))
-
-            back_folder = [f for f in os.listdir(path_) if
-                           os.path.isdir(os.path.join(path_, f))]
+                                                                                                "overwrite")
 
             with codecs.open(os.path.join(path_, "info.json"), encoding="utf-8-sig") as fp:
                 info = json.load(fp)
                 dim = info["backup_dimension"]
-                if dim in dim_dict:
-                    path = os.path.join(world_path, dim_dict[dim])
+
+            dim_path = []
+
+            back_list = dim.split(",")
+
+            for i in back_list:
+                if i not in dim_list.values():
+                    back_slot = None
+                    server.logger.error("请检查info.json里的维度信息是否正确")
+                    return
+
+                if i in dim_dict:
+                    dim_path.append(dim_dict[i])
 
                 else:
-                    path = world_path
+                    for j in dim_folder:
+                        dim_path.append(j)
 
             if info["command"].split()[1] == "dim_make":
 
-                if info["backup_dimension"] == "overworld":
-                    if back_slot != "overwrite":
-                        for i in back_folder:
-                            shutil.copytree(os.path.join(path, i), os.path.join(overwrite_path, i))
-                            shutil.rmtree(os.path.join(path, i))
-                            shutil.copytree(os.path.join(path_, i), os.path.join(path, i))
-                        shutil.copy2(os.path.join(path_, "info.json"),
-                                     os.path.join(overwrite_path, "info.json"))
-
-                    else:
-                        for i in back_folder:
-                            shutil.rmtree(os.path.join(path, i))
-                            shutil.copytree(os.path.join(path_, i), os.path.join(path, i))
+                if back_slot != "overwrite":
+                    for i in dim_path:
+                        shutil.copytree(os.path.join(world_path, i), os.path.join(overwrite_path, i))
+                        shutil.rmtree(os.path.join(world_path, i))
+                        shutil.copytree(os.path.join(path_, i), os.path.join(world_path, i))
+                    shutil.copy2(os.path.join(path_, "info.json"),
+                                 os.path.join(overwrite_path, "info.json"))
 
                 else:
-                    if back_slot != "overwrite":
-                        shutil.copytree(os.path.join(path), os.path.join(overwrite_path, dim_dict[dim]))
-                        shutil.rmtree(os.path.join(path))
-                        shutil.copytree(os.path.join(path_, dim_dict[dim]),
-                                        os.path.join(os.path.join(path)))
-                        shutil.copy2(os.path.join(path_, "info.json"),
-                                     os.path.join(overwrite_path, "info.json"))
-
-                    else:
-                        shutil.rmtree(os.path.join(path))
-                        shutil.copytree(os.path.join(path_, dim_dict[dim]),
-                                        os.path.join(os.path.join(path)))
+                    for i in dim_path:
+                        shutil.rmtree(os.path.join(world_path, i))
+                        shutil.copytree(os.path.join(path_, i), os.path.join(world_path, i))
 
             else:
 
                 if back_slot != "overwrite":
 
-                    for i in back_folder:
-                        os.makedirs(overwrite_path + "/" + i)
+                    for i in dim_path:
+                        os.makedirs(overwrite_path + f"/{i}")
 
-                    for backup_file in back_folder:
+                    for backup_file in dim_path:
                         if get_file_size([os.path.join(path_, backup_file)])[-1]:
                             lst = os.listdir(os.path.join(path_, backup_file))
                             for i in lst:
                                 # 复制即将被替换的区域到overwrite
-                                shutil.copy2(os.path.join(path, backup_file, i),
+                                shutil.copy2(os.path.join(world_path, backup_file, i),
                                              os.path.join(overwrite_path, backup_file, i))
                                 # 将备份的区域对存档里对应的区域替换
                                 shutil.copy2(os.path.join(path_, backup_file, i),
-                                             os.path.join(path, backup_file, i))
+                                             os.path.join(world_path, backup_file, i))
                             # 复制本次回档槽位的info文件到overwrite
                             shutil.copy2(os.path.join(path_, "info.json"),
                                          os.path.join(overwrite_path, "info.json"))
 
                 else:
-                    for backup_file in back_folder:
+                    for backup_file in dim_path:
                         if get_file_size([os.path.join(path_, backup_file)])[-1]:
                             lst = os.listdir(os.path.join(path_, backup_file))
                             for i in lst:
                                 # 将备份的区域对存档里对应的区域替换
                                 shutil.copy2(os.path.join(path_, backup_file, i),
-                                             os.path.join(path, backup_file, i))
+                                             os.path.join(world_path, backup_file, i))
 
             back_slot = None
 
@@ -812,7 +813,7 @@ def on_load(server: PluginServerInterface, old):
     builder.arg("z1", Number)
     builder.arg("x2", Number)
     builder.arg("z2", Number)
-    builder.arg("dim", Integer)
+    builder.arg("dim", Text)
     builder.arg("r", Integer)
     builder.arg("cmt", GreedyText)
     builder.arg("slot", Integer)
