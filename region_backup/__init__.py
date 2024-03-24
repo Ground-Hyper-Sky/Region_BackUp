@@ -58,7 +58,7 @@ help_msg = '''
 #sc=!!rb abort<>st=点击运行指令#§7{0} abort §a§l[▷] §e在任何时候键入此指令可中断回档
 #sc=!!rb list<>st=点击运行指令#§7{0} list §a§l[▷] §e显示各槽位的存档信息
 #sc=!!rb reload<>st=点击运行指令#§7{0} reload §a§l[▷] §e重载插件
-'''.format(Prefix, "Region BackUp", "1.6.0")
+'''.format(Prefix, "Region BackUp", "1.6.1")
 
 
 def print_help_msg(source: CommandSource):
@@ -493,33 +493,37 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
 
             else:
 
+                lst = [i for i in os.listdir(os.path.join(path_)) if os.path.isdir(os.path.join(path_, i))]
+
+                dim_name = dim_path[0] if dim_path[0] in dim_dict.values() else ""
+
                 if back_slot != "overwrite":
 
-                    for i in dim_path:
+                    for i in lst:
                         os.makedirs(overwrite_path + f"/{i}")
 
-                    for backup_file in dim_path:
+                    for backup_file in lst:
                         if get_file_size([os.path.join(path_, backup_file)])[-1]:
-                            lst = os.listdir(os.path.join(path_, backup_file))
-                            for i in lst:
+                            lst_ = os.listdir(os.path.join(path_, backup_file))
+                            for i in lst_:
                                 # 复制即将被替换的区域到overwrite
-                                shutil.copy2(os.path.join(world_path, backup_file, i),
+                                shutil.copy2(os.path.join(world_path,dim_name, backup_file, i),
                                              os.path.join(overwrite_path, backup_file, i))
                                 # 将备份的区域对存档里对应的区域替换
                                 shutil.copy2(os.path.join(path_, backup_file, i),
-                                             os.path.join(world_path, backup_file, i))
+                                             os.path.join(world_path, dim_name, backup_file, i))
                             # 复制本次回档槽位的info文件到overwrite
                             shutil.copy2(os.path.join(path_, "info.json"),
                                          os.path.join(overwrite_path, "info.json"))
 
                 else:
-                    for backup_file in dim_path:
+                    for backup_file in lst:
                         if get_file_size([os.path.join(path_, backup_file)])[-1]:
-                            lst = os.listdir(os.path.join(path_, backup_file))
-                            for i in lst:
+                            lst_ = os.listdir(os.path.join(path_, backup_file))
+                            for i in lst_:
                                 # 将备份的区域对存档里对应的区域替换
                                 shutil.copy2(os.path.join(path_, backup_file, i),
-                                             os.path.join(world_path, backup_file, i))
+                                             os.path.join(world_path, dim_name, backup_file, i))
 
             back_slot = None
 
@@ -712,6 +716,7 @@ def rename_slot():
 
 
 def copy_files(valid_pos, data):
+
     if data in dim_dict:
         path = os.path.join(world_path, dim_dict[data])
 
