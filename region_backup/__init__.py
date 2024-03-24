@@ -58,7 +58,7 @@ help_msg = '''
 #sc=!!rb abort<>st=点击运行指令#§7{0} abort §a§l[▷] §e在任何时候键入此指令可中断回档
 #sc=!!rb list<>st=点击运行指令#§7{0} list §a§l[▷] §e显示各槽位的存档信息
 #sc=!!rb reload<>st=点击运行指令#§7{0} reload §a§l[▷] §e重载插件
-'''.format(Prefix, "Region BackUp", "1.7.0")
+'''.format(Prefix, "Region BackUp", "1.6.1")
 
 
 def print_help_msg(source: CommandSource):
