@@ -42,27 +42,9 @@ back_slot = None
 # 超时
 time_out = 5
 
-help_msg = '''
------- {1} {2} ------
-一个以区域为单位的§a备份回档§a插件
-§3作者：FRUITS_CANDY
-§d【格式说明】
-#sc=!!rb<>st=点击运行指令#§7{0} §a§l[▷] §e显示帮助信息
-#sc=!!rb make<>st=点击运行指令#§7{0} make §b<区块半径> <注释> §a§l[▷] §e以玩家所在区块为中心，备份边长为2倍半径+1的区块所在区域
-#sc=!!rb dim_make<>st=点击运行指令#§7{0} dim_make §b<维度:0主世界,-1地狱,1末地> <注释> §a§l[▷] §e备份给定维度的所有区域,维度间用,做区分 §a例 0 或 0,-1
-#sc=!!rb pos_make<>st=点击运行指令#§7{0} pos_make §b<x1坐标> <z1坐标> <x2坐标> <z2坐标> <维度:格式见上条指令> <注释> §a§l[▷] §e给定两个坐标点，备份以两坐标点对应的区域坐标为顶点形成的矩形区域
-#sc=!!rb back<>st=点击运行指令#§7{0} back §b<槽位> §a§l[▷] §e回档指定槽位所对应的区域
-#sc=!!rb restore<>st=点击运行指令#§7{0} restore §b<槽位> §a§l[▷] §e使存档还原到回档前状态
-#sc=!!rb del<>st=点击运行指令#§7{0} del §b<槽位> §a§l[▷] §e删除某槽位
-#sc=!!rb confirm<>st=点击运行指令#§7{0} confirm §a§l[▷] §e再次确认是否回档
-#sc=!!rb abort<>st=点击运行指令#§7{0} abort §a§l[▷] §e在任何时候键入此指令可中断回档
-#sc=!!rb list<>st=点击运行指令#§7{0} list §a§l[▷] §e显示各槽位的存档信息
-#sc=!!rb reload<>st=点击运行指令#§7{0} reload §a§l[▷] §e重载插件
-'''.format(Prefix, "Region BackUp", "1.6.1")
-
 
 def print_help_msg(source: CommandSource):
-    source.reply(Message.get_json_str(help_msg))
+    source.reply(Message.get_json_str(tr("help_message", Prefix, "Region BackUp", "1.7.0")))
     rb_list(source)
 
 
@@ -71,29 +53,30 @@ def rb_make(source: InfoCommandSource, dic: dict):
     global backup_state, user
     try:
         if not source.get_info().is_player:
-            source.reply("§c§l该指令只能由玩家输入!")
+            source.reply(tr("backup_error.source_error"))
             return
+
         if backup_state is None:
             backup_state = False
 
             if "cmt" not in dic:
-                dic["cmt"] = "§7空"
+                dic["cmt"] = tr("default_comment")
 
             r = int(dic["r"])
 
             if r < 0:
-                source.reply("§c备份半径应为大于等于0的整数!")
+                source.reply(tr("backup_error.radius_error"))
                 backup_state = None
                 return
 
-            source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
+            source.get_server().broadcast(tr("backup.start"))
 
             get_user_info(source)
 
             t = time.time()
             while len(data_list) < 4:
                 if time.time() - t > time_out:
-                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().broadcast(tr("backup_error.timeout"))
                     source.get_server().execute("save-on")
                     backup_state = None
                     user = None
@@ -111,7 +94,7 @@ def rb_make(source: InfoCommandSource, dic: dict):
             t1 = time.time()
             while backup_state != 1:
                 if time.time() - t1 > time_out:
-                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().broadcast(tr("backup_error.timeout"))
                     source.get_server().execute("save-on")
                     backup_state = None
                     user = None
@@ -122,7 +105,7 @@ def rb_make(source: InfoCommandSource, dic: dict):
             t1 = time.time()
             while backup_state != 2:
                 if time.time() - t1 > time_out:
-                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().broadcast(tr("backup_error.timeout"))
                     source.get_server().execute("save-on")
                     backup_state = None
                     user = None
@@ -139,9 +122,9 @@ def rb_make(source: InfoCommandSource, dic: dict):
             make_info_file(dic["cmt"], data=data)
 
             t2 = time.time()
-            source.get_server().broadcast(f"[RBU] §a备份§f完成，耗时§6{(t2 - t):.2f}§f秒")
+            source.get_server().broadcast(tr("backup.done", f"{(t2 - t):.2f}"))
             source.get_server().broadcast(
-                f"[RBU] 日期: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}; 注释: {dic['cmt']}")
+                tr("backup.date", f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", f"{dic['cmt']}"))
 
             source.get_server().execute("save-on")
             backup_state = None
@@ -150,11 +133,11 @@ def rb_make(source: InfoCommandSource, dic: dict):
     except Exception as e:
         user = None
         backup_state = None
-        source.reply(f"备份出错,错误信息:§c{e}")
+        source.reply(tr("backup_error.unknown_error", e))
         source.get_server().execute("save-on")
         return
 
-    source.reply("§c§l备份正在进行,请不要重复备份!")
+    source.reply(tr("backup_error.repeat_backup"))
 
 
 @new_thread("rb_pos_make")
@@ -167,27 +150,27 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
             x1, z1, x2, z2 = dic["x1"], dic["z1"], dic["x2"], dic["z2"]
 
             if "cmt" not in dic:
-                dic["cmt"] = "§7空"
+                dic["cmt"] = tr("default_comment")
 
             dim = int(dic["dim"])
 
             if dim not in dim_list:
                 backup_state = None
-                source.reply("§c维度输入错误")
+                source.reply(tr("backup_error.dim_error"))
                 return
 
             dim = dim_list[dim]
 
-            source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
+            source.get_server().broadcast(tr("backup.start"))
 
             backup_pos = get_backup_pos(pos_list=[(int(x1 // 512), int(x2 // 512)), (int(z1 // 512), int(z2 // 512))])
             user = source.get_info().is_user
             # 保存游戏
             source.get_server().execute("save-off")
-            t1 = time.time()
+            t = time.time()
             while backup_state != 1:
-                if time.time() - t1 > time_out:
-                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                if time.time() - t > time_out:
+                    source.get_server().broadcast(tr("backup_error.timeout"))
                     source.get_server().execute("save-on")
                     backup_state = None
                     user = None
@@ -198,7 +181,7 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
             t1 = time.time()
             while backup_state != 2:
                 if time.time() - t1 > time_out:
-                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().broadcast(tr("backup_error.timeout"))
                     source.get_server().execute("save-on")
                     backup_state = None
                     user = None
@@ -210,7 +193,7 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
 
             if all(not v for v in valid_pos.values()):
                 backup_state = None
-                source.reply("§c本次备份无效,根据输入的坐标,未找到对应的区域")
+                source.reply(tr("backup_error.invalid_pos"))
                 source.get_server().execute("save-on")
 
             rename_slot()
@@ -223,9 +206,9 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
                            )
 
             t2 = time.time()
-            source.get_server().broadcast(f"[RBU] §a备份§f完成，耗时§6{(t2 - t1):.2f}§f秒")
+            source.get_server().broadcast(tr("backup.done", f"{(t2 - t):.2f}"))
             source.get_server().broadcast(
-                f"[RBU] 日期: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}; 注释: {dic['cmt']}")
+                tr("backup.date", f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", f"{dic['cmt']}"))
 
             source.get_server().execute("save-on")
             backup_state = None
@@ -234,11 +217,11 @@ def rb_pos_make(source: InfoCommandSource, dic: dict):
     except Exception as e:
         backup_state = None
         user = None
-        source.reply(f"备份出错,错误信息:§c{e}")
+        source.reply(tr("backup_error.unknown_error", e))
         source.get_server().execute("save-on")
         return
 
-    source.reply("§c§l备份正在进行,请不要重复备份!")
+    source.reply(tr("backup_error.repeat_backup"))
 
 
 @new_thread("rb_dim_make")
@@ -250,7 +233,7 @@ def rb_dim_make(source: InfoCommandSource, dic: dict):
             backup_state = False
 
             if "cmt" not in dic:
-                dic["cmt"] = "§7空"
+                dic["cmt"] = tr("default_comment")
 
             dim = dic["dim"]
 
@@ -258,7 +241,7 @@ def rb_dim_make(source: InfoCommandSource, dic: dict):
             dim = [int(s) if s[0] != '-' else -int(s[1:]) for s in res]
             if len(dim) != len(set(dim)):
                 backup_state = None
-                source.reply("§c维度输入重复")
+                source.reply(tr("backup_error.dim_repeat"))
                 return
 
             backup_list = []
@@ -266,11 +249,11 @@ def rb_dim_make(source: InfoCommandSource, dic: dict):
             for i in dim:
                 if i not in dim_list:
                     backup_state = None
-                    source.reply("§c维度输入错误")
+                    source.reply(tr("backup_error.dim_error"))
                     return
                 backup_list.append(dim_list[i])
 
-            source.get_server().broadcast("[RBU] §a备份§f中...请稍等")
+            source.get_server().broadcast(tr("backup.start"))
 
             user = source.get_info().is_user
             # 保存游戏
@@ -278,7 +261,7 @@ def rb_dim_make(source: InfoCommandSource, dic: dict):
             t = time.time()
             while backup_state != 1:
                 if time.time() - t > time_out:
-                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().broadcast(tr("backup_error.timeout"))
                     source.get_server().execute("save-on")
                     backup_state = None
                     user = None
@@ -289,7 +272,7 @@ def rb_dim_make(source: InfoCommandSource, dic: dict):
             t1 = time.time()
             while backup_state != 2:
                 if time.time() - t1 > time_out:
-                    source.get_server().broadcast("[RBU] §c备份§f超时,已取消备份")
+                    source.get_server().broadcast(tr("backup_error.timeout"))
                     source.get_server().execute("save-on")
                     backup_state = None
                     user = None
@@ -319,9 +302,9 @@ def rb_dim_make(source: InfoCommandSource, dic: dict):
                            cmd=source.get_info().content)
 
             t2 = time.time()
-            source.get_server().broadcast(f"[RBU] §a备份§f完成，耗时§6{(t2 - t):.2f}§f秒")
+            source.get_server().broadcast(tr("backup.done", f"{(t2 - t):.2f}"))
             source.get_server().broadcast(
-                f"[RBU] 日期: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}; 注释: {dic['cmt']}")
+                tr("backup.date", f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", f"{dic['cmt']}"))
 
             source.get_server().execute("save-on")
             backup_state = None
@@ -330,11 +313,11 @@ def rb_dim_make(source: InfoCommandSource, dic: dict):
     except Exception as e:
         user = None
         backup_state = None
-        source.reply(f"备份出错,错误信息:§c{e}")
+        source.reply(tr("backup_error.unknown_error", e))
         source.get_server().execute("save-on")
         return
 
-    source.reply("§c§l备份正在进行,请不要重复备份!")
+    source.reply(tr("backup_error.repeat_backup"))
 
 
 # 玩家信息类型有如下两种 坐标，即Pos 维度，即Dimension
@@ -373,13 +356,13 @@ def rb_back(source: InfoCommandSource, dic: dict):
     path = slot_path.format(dic["slot"]) if isinstance(dic["slot"], int) else os.path.join(backup_path, dic["slot"])
 
     if not os.path.exists(os.path.join(path, "info.json")):
-        source.reply("§c该槽位无info.json文件或槽位不存在,无法回档")
+        source.reply(tr("back_error.lack_info"))
         return
 
     if not get_file_size(
             [os.path.join(path, f) for f in os.listdir(path) if
              os.path.isdir(os.path.join(path, f))])[-1]:
-        source.reply("§c该槽位无区域文件,无法回档")
+        source.reply(tr("back_error.lack_region"))
         return
 
     try:
@@ -394,33 +377,31 @@ def rb_back(source: InfoCommandSource, dic: dict):
                 cmt = info["comment"]
 
             source.reply(
-                Message.get_json_str("\n".join([f"[RBU] 准备将存档恢复至槽位§6{dic['slot']}§f，日期 {t}; 注释: {cmt}",
-                                                "[RBU] 使用#sc=!!rb confirm<>st=点击确认#§7!!rb confirm "
-                                                "§f确认§c回档§f，#sc=!!rb abort<>st=点击取消#§7!!rb abort §f取消"])))
+                Message.get_json_str("\n".join([tr("back.start", dic["slot"], t, cmt), tr("back.click")])))
+
             t1 = time.time()
             while not back_state:
                 if time.time() - t1 > 10:
-                    source.reply("§a回档超时,已取消本次回档")
+                    source.reply(tr("back_error.timeout"))
                     back_state = None
                     return
                 time.sleep(0.01)
 
             if back_state is True:
-                source.reply("§a回档已取消")
+                source.reply(tr("back.abort"))
                 back_state = None
                 return
             # 提示
 
-            source.get_server().broadcast("§c服务器将于10秒后关闭回档!")
+            source.get_server().broadcast(tr("back.countdown"))
+
             for stop_time in range(1, 10):
                 time.sleep(1)
                 if back_state is True:
                     back_state = None
-                    source.reply("§a回档已取消")
+                    source.reply(tr("back.abort"))
                     return
-                source.get_server().broadcast(Message.get_json_str("\n".join(
-                    [
-                        f"§a服务器还有{10 - stop_time}秒关闭，输入#sc=!!rb abort<>st=终止回档#§c!!rb abort§f来停止回档到槽位§6{dic['slot']}"])))
+                source.get_server().broadcast(Message.get_json_str(tr("back.count", f"{10 - stop_time}", dic["slot"])))
 
             back_slot = dic["slot"]
             # 停止服务器
@@ -430,10 +411,10 @@ def rb_back(source: InfoCommandSource, dic: dict):
 
     except Exception as e:
         back_state = back_slot = None
-        source.reply(f"回档出错,错误信息:§c{e}")
+        source.reply(tr("back_error.unknown_error", e))
         return
 
-    source.reply("§c§l回档正在进行,请不要重复回档!")
+    source.reply(tr("back_error.repeat_back"))
 
 
 def on_server_stop(server: PluginServerInterface, server_return_code: int):
@@ -443,10 +424,10 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
         if back_slot:
             if server_return_code != 0:
                 back_slot = None
-                server.logger.error("服务端关闭异常,回档终止")
+                server.logger.error(tr("back_error.server_error"))
                 return
 
-            server.logger.info("§a正在运行文件替换")
+            server.logger.info(tr("back.run"))
 
             if os.path.exists(overwrite_path) and back_slot != "overwrite":
                 shutil.rmtree(overwrite_path)
@@ -466,7 +447,7 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
             for i in back_list:
                 if i not in dim_list.values():
                     back_slot = None
-                    server.logger.error("请检查info.json里的维度信息是否正确")
+                    server.logger.error(tr("back_error.wrong_dim"))
                     return
 
                 if i in dim_dict:
@@ -507,7 +488,7 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
                             lst_ = os.listdir(os.path.join(path_, backup_file))
                             for i in lst_:
                                 # 复制即将被替换的区域到overwrite
-                                shutil.copy2(os.path.join(world_path,dim_name, backup_file, i),
+                                shutil.copy2(os.path.join(world_path, dim_name, backup_file, i),
                                              os.path.join(overwrite_path, backup_file, i))
                                 # 将备份的区域对存档里对应的区域替换
                                 shutil.copy2(os.path.join(path_, backup_file, i),
@@ -531,7 +512,7 @@ def on_server_stop(server: PluginServerInterface, server_return_code: int):
 
     except Exception as e:
         back_slot = None
-        server.logger.error(f"回档出错,错误信息:§c{e}")
+        server.logger.error(tr("back_error.unknown_error", e))
         return
 
 
@@ -542,15 +523,15 @@ def rb_del(source: CommandSource, dic: dict):
         # 删除整个文件夹
         if os.path.exists(s):
             shutil.rmtree(s, ignore_errors=True)
-            source.reply(f"§4§l槽位{dic['slot']}删除成功")
+            source.reply(tr("del", dic['slot']))
             return
 
-        source.reply(f"§4§l槽位{dic['slot']}不存在")
+        source.reply(tr("del_error.lack_slot", dic['slot']))
 
     except Exception as e:
         for i in range(1, slot + 1):
             os.makedirs(slot_path.format(i), exist_ok=True)
-        source.reply(f"删除备份时出错,错误信息:§c{e}")
+        source.reply(tr("del_error.unknown_error", e))
         return
 
 
@@ -558,7 +539,7 @@ def rb_abort(source: CommandSource):
     global back_state
     # 当前操作备份信息
     if back_state is None:
-        source.reply("没有什么可中断的")
+        source.reply(tr("abort"))
         return
     back_state = True
 
@@ -566,7 +547,7 @@ def rb_abort(source: CommandSource):
 def rb_confirm(source: CommandSource):
     global back_state
     if back_state is None:
-        source.reply("没有什么可确认的")
+        source.reply(tr("confirm"))
         return
     back_state = 1
 
@@ -577,12 +558,12 @@ def rb_list(source: CommandSource):
                      _slot.startswith("slot") and os.path.isdir(backup_path + rf"/{_slot}")]
 
         if not slot_list:
-            source.reply("没有槽位存在")
+            source.reply(tr("list.empty_slot"))
             return
 
         slots = sorted(slot_list, key=lambda x: int(x.replace("slot", "")))
 
-        msg_list = ["§d【槽位信息】"]
+        msg_list = [tr("list.first")]
 
         total_size = 0
 
@@ -601,24 +582,20 @@ def rb_list(source: CommandSource):
                         size = get_file_size([os.path.join(backup_path, i)])
                         total_size += size[-1]
 
-                        msg = f"#st=备份维度:{dim}#[槽位§6{s}§f] #sc=!!rb back {s}<>st=回档至槽位§6{s}#§a[▷] #sc=!!rb " \
-                              f"del {s}<>st=删除槽位§6{s}#§c[x] ##§a{size[0]} §f{t} 注释: {cmt}"
+                        msg = tr("list.slot_info", dim, s, size[0], t, cmt)
 
                         msg_list.append(msg)
             else:
-                msg = f"[槽位§6{s}§f] 空"
+                msg = tr("list.empty_size", s)
                 msg_list.append(msg)
 
-        if not total_size:
-            msg_list.append("备份占用总空间: 无")
-
-        else:
-            msg_list.append(f"备份占用总空间: §a{convert_bytes(total_size)}")
+        if total_size:
+            msg_list.append(tr("list.total_size", convert_bytes(total_size)))
 
         source.reply(Message.get_json_str("\n".join(msg_list)))
 
     except Exception as e:
-        source.reply(f"显示备份列表出错,错误信息:§c{e}")
+        source.reply(tr("list_error", e))
         return
 
 
@@ -649,9 +626,13 @@ def convert_bytes(size_in_bytes):
 def rb_reload(source: CommandSource):
     try:
         source.get_server().reload_plugin("region_backup")
-        source.reply("§a§l插件已重载")
+        source.reply(tr("reload"))
     except Exception as e:
-        source.reply(f"重载插件失败: §c§l{e}")
+        source.reply(tr("reload_error", e))
+
+
+def tr(key, *args):
+    return ServerInterface.get_instance().tr(f"region_backup.{key}", *args)
 
 
 def on_unload(server: PluginServerInterface):
@@ -691,9 +672,9 @@ def make_info_file(cmt, data=None, backup_dim=None, user_=None, cmd=None):
     info = rb_info.get_default().serialize()
     info["time"] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     info["backup_dimension"] = data[-1] if not backup_dim else backup_dim
-    info["user_dimension"] = data[-1] if not backup_dim else "无"
+    info["user_dimension"] = data[-1] if not backup_dim else tr("default_info")
     info["user"] = data[0] if not user_ else user_
-    info["user_pos"] = ",".join(str(pos) for pos in data[2]) if not user_ else "无"
+    info["user_pos"] = ",".join(str(pos) for pos in data[2]) if not user_ else tr("default_info")
     info["command"] = data[1] if not cmd else cmd
     info["comment"] = cmt
 
@@ -716,7 +697,6 @@ def rename_slot():
 
 
 def copy_files(valid_pos, data):
-
     if data in dim_dict:
         path = os.path.join(world_path, dim_dict[data])
 
@@ -794,7 +774,7 @@ def on_load(server: PluginServerInterface, old):
 
     require = Requirements()
 
-    server.register_help_message('!!rb', '查看与区域备份有关的指令')
+    server.register_help_message('!!rb', tr("register_message"))
 
     builder = SimpleCommandBuilder()
 
@@ -828,6 +808,6 @@ def on_load(server: PluginServerInterface, old):
     for literal in command_literals:
         permission = level_dict[literal]
         builder.literal(literal).requires(require.has_permission(permission),
-                                          failure_message_getter=lambda err: "你没有运行该指令的权限")
+                                          failure_message_getter=lambda err: tr("lack_permission"))
 
     builder.register(server)
